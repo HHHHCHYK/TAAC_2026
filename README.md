@@ -78,8 +78,16 @@ https://huggingface.co/datasets/TAAC2026/data_sample_1000
 比赛采用两阶段评估框架，逐步强调预测准确性、可扩展性、效率和可复现性。在第一轮（开放初赛阶段），所有团队将在隐藏测试集上根据官方评估指标进行排名，同时实施严格的防过拟合控制（如提交限制和延迟反馈）。如有必要，将实施容量感知滚动准入机制（支持多达5,000支并发团队），以确保公平的资源访问。第一轮结束时，排行榜将被冻结，前50名学术团队和前20名工业团队将仅根据官方指标表现晋级第二轮。
 第二轮在约10倍更大规模的数据集上评估模型的鲁棒性和大规模建模能力，同时设置严格的推理延迟限制，以鼓励采用GPU高效统一架构。每支决赛团队将获得相当的计算资源，且所有提交必须通过官方环境中的可复现性和规则合规性验证。
 
-## Our Work
+## 我们的工作
 TODO
+
+## 相关工作
+**2025届**
+[1] https://pd-ch.github.io/blog/2025-07-31-taac-participate-record/
+[2] https://github.com/zcyeee/TAAC
+
+**2026届**
+[1] https://github.com/creatorwyx/TAAC2026-CTR-Baseline
 
 ## References
 [1] InterFormer: Effective Heterogeneous Interaction Learning for Click-Through Rate Prediction. CIKM, 2025.  
