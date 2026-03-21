@@ -1,5 +1,7 @@
 # 开发文档
 
+基于uv管理环境，请使用uv pip安装任何依赖
+
 ## 环境
 ```bash
 uv venv --python=3.14
