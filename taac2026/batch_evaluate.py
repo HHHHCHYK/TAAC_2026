@@ -4,6 +4,7 @@ import argparse
 from pathlib import Path
 from typing import Any
 
+from .config import load_config
 from .evaluate import evaluate_checkpoint
 from .utils import ensure_dir, write_json
 
@@ -21,6 +22,9 @@ DEFAULT_CONFIG_PATHS = [
     "configs/uniscaleformer.yaml",
     "configs/grok_din_readout.yaml",
     "configs/unirec_din_readout.yaml",
+    "configs/interformer.yaml",
+    "configs/onetrans.yaml",
+    "configs/hyformer.yaml",
 ]
 
 
@@ -63,7 +67,7 @@ def parse_args() -> argparse.Namespace:
         "--config-paths",
         nargs="*",
         default=DEFAULT_CONFIG_PATHS,
-        help="需要评估的配置路径列表。默认覆盖当前 12 个活跃实验。",
+        help="需要评估的配置路径列表。默认覆盖当前全部已登记模型配置。",
     )
     parser.add_argument(
         "--output-dir",
@@ -80,7 +84,17 @@ def main() -> None:
     records: list[dict[str, Any]] = []
 
     for index, config_path in enumerate(args.config_paths, start=1):
-        payload = evaluate_checkpoint(config_path=config_path)
+        config_file = Path(config_path)
+        default_checkpoint = Path(load_config(config_file).train.output_dir) / "best.pt" if config_file.exists() else None
+        if default_checkpoint is not None and not default_checkpoint.exists():
+            print(f"skip={config_path} reason=missing_checkpoint checkpoint={default_checkpoint}")
+            continue
+
+        try:
+            payload = evaluate_checkpoint(config_path=config_path)
+        except RuntimeError as error:
+            print(f"skip={config_path} reason=incompatible_checkpoint error={error}")
+            continue
         metrics = payload["metrics"]
         latency = payload["latency"]
         record = {

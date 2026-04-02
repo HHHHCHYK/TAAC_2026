@@ -10,9 +10,11 @@ from torch import nn
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
+from .types import BatchTensors
 
-def move_batch_to_device(batch: dict[str, torch.Tensor], device: torch.device) -> dict[str, torch.Tensor]:
-    return {key: value.to(device) for key, value in batch.items()}
+
+def move_batch_to_device(batch: BatchTensors, device: torch.device) -> BatchTensors:
+    return batch.to(device)
 
 
 def _binary_classification_metrics(

@@ -24,6 +24,16 @@ uv run taac-train --config configs/deep_context_net.yaml
 uv run taac-train --config configs/unirec.yaml
 uv run taac-train --config configs/unirec_din_readout.yaml
 uv run taac-train --config configs/uniscaleformer.yaml
+uv run taac-train --config configs/interformer.yaml
+uv run taac-train --config configs/onetrans.yaml
+uv run taac-train --config configs/hyformer.yaml
+
+# 注意：项目现在只维护当前这一套统一训练实现，旧版本代码产出的 best.pt 需要按当前代码重训后再评估。
+# taac-evaluate 会对不兼容 checkpoint 给出明确提示，taac-batch-evaluate 会自动跳过。
+
+# 如果需要保留独立实验目录，不要再复制一份配置文件，直接覆写输出目录。
+uv run taac-train --config configs/unirec.yaml --output-dir outputs/runs/unirec_ablation_001
+uv run taac-evaluate --config configs/unirec.yaml --run-dir outputs/runs/unirec_ablation_001
 
 # 对已有 best.pt 直接回填多指标与分桶评估
 uv run taac-evaluate --config configs/creatorwyx_din_adapter.yaml

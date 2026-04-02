@@ -17,6 +17,7 @@ def evaluate_checkpoint(
     config_path: str | Path,
     checkpoint_path: str | Path | None = None,
     output_path: str | Path | None = None,
+    run_dir: str | Path | None = None,
 ) -> dict[str, object]:
     config = load_config(Path(config_path))
     set_seed(config.train.seed)
@@ -26,21 +27,28 @@ def evaluate_checkpoint(
         config=config.data,
         vocab_size=config.model.vocab_size,
         batch_size=config.train.batch_size,
+        eval_batch_size=config.train.resolved_eval_batch_size,
         num_workers=config.train.num_workers,
     )
 
     model = build_model(
         config=config.model,
-        dense_dim=int(data_stats["dense_dim"]),
-        max_seq_len=config.data.max_seq_len,
+        data_config=config.data,
+        dense_dim=data_stats.dense_dim,
     ).to(device)
     parameter_count = sum(parameter.numel() for parameter in model.parameters())
 
-    resolved_checkpoint_path = Path(checkpoint_path) if checkpoint_path else Path(config.train.output_dir) / "best.pt"
+    resolved_run_dir = Path(run_dir) if run_dir else Path(config.train.output_dir)
+    resolved_checkpoint_path = Path(checkpoint_path) if checkpoint_path else resolved_run_dir / "best.pt"
     checkpoint = torch.load(resolved_checkpoint_path, map_location=device)
-    model.load_state_dict(checkpoint["model_state_dict"])
+    try:
+        model.load_state_dict(checkpoint["model_state_dict"])
+    except RuntimeError as error:
+        raise RuntimeError(
+            f"Checkpoint {resolved_checkpoint_path} is incompatible with the current architecture. Retrain this config before evaluation."
+        ) from error
 
-    pos_weight = torch.tensor([data_stats["pos_weight"]], dtype=torch.float32, device=device)
+    pos_weight = torch.tensor([data_stats.pos_weight], dtype=torch.float32, device=device)
     criterion = build_criterion(
         loss_name=config.train.loss_name,
         pos_weight=pos_weight,
@@ -69,7 +77,7 @@ def evaluate_checkpoint(
         "parameter_count": parameter_count,
         "metrics": metrics,
         "latency": latency,
-        "data_stats": data_stats,
+        "data_stats": data_stats.to_dict(),
         "optimizer_name": config.train.optimizer_name,
         "loss_name": config.train.loss_name,
     }
@@ -92,6 +100,12 @@ def parse_args() -> argparse.Namespace:
         help="checkpoint 路径，默认读取对应 output_dir 下的 best.pt。",
     )
     parser.add_argument(
+        "--run-dir",
+        type=str,
+        default="",
+        help="运行目录覆盖，默认使用配置文件中的 output_dir 来定位 best.pt。",
+    )
+    parser.add_argument(
         "--output-path",
         type=str,
         default="",
@@ -106,6 +120,7 @@ def main() -> None:
         config_path=args.config,
         checkpoint_path=args.checkpoint or None,
         output_path=args.output_path or None,
+        run_dir=args.run_dir or None,
     )
 
     metrics = payload["metrics"]

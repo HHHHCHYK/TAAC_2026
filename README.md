@@ -19,7 +19,7 @@ https://algo.qq.com/#intro
 本仓库聚焦两大核心能力：
 
 1. **Grok 风格 Unified Baseline**：作为持续迭代的主线实现，提供统一的序列建模与特征交互框架。
-2. **公开方案适配接口**：将多种业界公开方案无缝接入 TAAC Parquet 数据流，统一至单候选二分类任务范式。
+2. **统一多架构实验平台**：基于统一的数据编码、共享多视图 encoder、训练、评估与可视化底座，支持当前全部模型以及 InterFormer、OneTrans、HyFormer 等新结构。
 
 ## 可视化图表集
 
@@ -110,8 +110,11 @@ https://algo.qq.com/#intro
 | UniRec                         | `configs/unirec.yaml`                         | [hojiahao/TAAC2026](https://github.com/hojiahao/TAAC2026)                                                                       |
 | UniScaleFormer                 | `configs/uniscaleformer.yaml`                 | [twx145/Unirec](https://github.com/twx145/Unirec)                                                                               |
 | UniRec DIN readout             | `configs/unirec_din_readout.yaml`             | [hojiahao/TAAC2026](https://github.com/hojiahao/TAAC2026)                                                                       |
+| InterFormer                    | `configs/interformer.yaml`                    | [twx145/Unirec](https://github.com/twx145/Unirec)                                                                               |
+| OneTrans                       | `configs/onetrans.yaml`                       | [twx145/Unirec](https://github.com/twx145/Unirec)                                                                               |
+| HyFormer                       | `configs/hyformer.yaml`                       | [twx145/Unirec](https://github.com/twx145/Unirec)                                                                               |
 
-说明：上述复现统一复用本仓库的 parquet 编码、时间切分验证、多指标评估、分桶看板与延迟测试框架，属于"在本仓库任务设定下的结构适配复现"，而非逐字节复制外部仓库的数据管线与训练脚本。
+说明：上述结构现已统一运行在本仓库当前这一套训练实现上，复用同一套 parquet 编码、共享 batch contract、多指标评估、分桶看板与延迟测试框架；它们是在本仓库任务设定下的统一实现与复现，而非逐字节复制外部仓库的数据管线与训练脚本。
 
 详细训练、评估、可视化等命令请参考 [dev.md](dev.md)。
 

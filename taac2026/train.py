@@ -25,6 +25,7 @@ def train_one_epoch(
     optimizer,
     device: torch.device,
     grad_clip_norm: float,
+    use_amp: bool,
 ) -> float:
     model.train()
     total_loss = 0.0
@@ -33,18 +34,20 @@ def train_one_epoch(
     for batch in tqdm(loader, desc="train", leave=False):
         batch = move_batch_to_device(batch, device)
         optimizer.zero_grad(set_to_none=True)
-        logits = model(batch)
-        loss = criterion(logits, batch["labels"])
+        with torch.autocast(device_type=device.type, dtype=torch.bfloat16, enabled=use_amp and device.type == "cuda"):
+            logits = model(batch)
+            loss = criterion(logits, batch.labels)
         loss.backward()
         if grad_clip_norm > 0:
             torch.nn.utils.clip_grad_norm_(model.parameters(), grad_clip_norm)
         optimizer.step()
 
-        batch_size = batch["labels"].size(0)
-        total_loss += loss.item() * batch_size
+        batch_size = batch.batch_size
+        total_loss += float(loss.item()) * batch_size
         total_examples += batch_size
 
     return total_loss / max(total_examples, 1)
+
 
 def run_training(config: ExperimentConfig) -> dict[str, Any]:
     set_seed(config.train.seed)
@@ -55,17 +58,18 @@ def run_training(config: ExperimentConfig) -> dict[str, Any]:
         config=config.data,
         vocab_size=config.model.vocab_size,
         batch_size=config.train.batch_size,
+        eval_batch_size=config.train.resolved_eval_batch_size,
         num_workers=config.train.num_workers,
     )
 
     model = build_model(
         config=config.model,
-        dense_dim=int(data_stats["dense_dim"]),
-        max_seq_len=config.data.max_seq_len,
+        data_config=config.data,
+        dense_dim=data_stats.dense_dim,
     ).to(device)
     parameter_count = sum(parameter.numel() for parameter in model.parameters())
 
-    pos_weight = torch.tensor([data_stats["pos_weight"]], dtype=torch.float32, device=device)
+    pos_weight = torch.tensor([data_stats.pos_weight], dtype=torch.float32, device=device)
     criterion = build_criterion(
         loss_name=config.train.loss_name,
         pos_weight=pos_weight,
@@ -80,19 +84,26 @@ def run_training(config: ExperimentConfig) -> dict[str, Any]:
     print(f"device={device}")
     print(f"model={config.model.name} parameters={parameter_count}")
     print(
-        f"train_size={int(data_stats['train_size'])} val_size={int(data_stats['val_size'])} train_positive_rate={data_stats['train_positive_rate']:.4f}"
+        f"train_size={data_stats.train_size} val_size={data_stats.val_size} train_positive_rate={data_stats.train_positive_rate:.4f}"
     )
 
     for epoch in range(1, config.train.epochs + 1):
         train_loss = train_one_epoch(
-            model,
-            train_loader,
-            criterion,
-            optimizer,
-            device,
+            model=model,
+            loader=train_loader,
+            criterion=criterion,
+            optimizer=optimizer,
+            device=device,
             grad_clip_norm=config.train.grad_clip_norm,
+            use_amp=config.train.use_amp,
         )
-        metrics = evaluate_model(model, val_loader, criterion, device, include_bucket_metrics=False)
+        metrics = evaluate_model(
+            model=model,
+            loader=val_loader,
+            criterion=criterion,
+            device=device,
+            include_bucket_metrics=False,
+        )
         epoch_result = {
             "epoch": float(epoch),
             "train_loss": float(train_loss),
@@ -113,7 +124,7 @@ def run_training(config: ExperimentConfig) -> dict[str, Any]:
             torch.save(
                 {
                     "model_state_dict": model.state_dict(),
-                    "data_stats": data_stats,
+                    "data_stats": data_stats.to_dict(),
                     "best_val_auc": best_auc,
                     "best_epoch": best_epoch,
                 },
@@ -136,7 +147,7 @@ def run_training(config: ExperimentConfig) -> dict[str, Any]:
         "best_metrics": best_metrics,
         "final_epoch_metrics": history[-1] if history else {},
         "latency": latency,
-        "data_stats": data_stats,
+        "data_stats": data_stats.to_dict(),
         "optimizer_name": config.train.optimizer_name,
         "loss_name": config.train.loss_name,
         "history": history,
@@ -149,12 +160,18 @@ def run_training(config: ExperimentConfig) -> dict[str, Any]:
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Train the TAAC 2026 Grok-style baseline model.")
+    parser = argparse.ArgumentParser(description="Train a TAAC 2026 recommendation model.")
     parser.add_argument(
         "--config",
         type=str,
         default="configs/baseline.yaml",
         help="Path to the YAML config file.",
+    )
+    parser.add_argument(
+        "--output-dir",
+        type=str,
+        default="",
+        help="Optional override for the run output directory.",
     )
     return parser.parse_args()
 
@@ -162,6 +179,8 @@ def parse_args() -> argparse.Namespace:
 def main() -> None:
     args = parse_args()
     config = load_config(Path(args.config))
+    if args.output_dir:
+        config.train.output_dir = args.output_dir
     run_training(config)
 
 
