@@ -1,7 +1,8 @@
 # TAAC_2026
 
 > [!NOTE]  
-> 这是TAAC其中一个参赛队伍的代码仓库, 不代表官方文档
+> 这是TAAC其中一个参赛队伍的代码仓库, 不代表官方文档  
+> 我们的目标是提供一个开箱即用的训练框架, 以促进社区在统一序列建模与特征交互的大规模推荐系统方向上的研究和创新。
 
 https://algo.qq.com/#intro
 
@@ -20,18 +21,10 @@ https://algo.qq.com/#intro
 
 ![Model Performance VS Compute](figures/model_performance_vs_compute.svg)
 
-当前 main 分支已经收敛为一套“共享最小运行时 + 目录式实验包”的实验工作区，目标是在同一份 parquet batch 契约上快速接入外部方案、完成训练、评估与回归验证。
+我们的目标很简单：在一套统一的 parquet batch 上，能快速接进来、跑起来、评估掉、还有回归保障。
 
-当前仓库只有两类一等公民：
-
-1. `src/taac2026`：共享底座，提供 FolderExperiment 加载、训练入口、评估入口、基础指标与 checkpoint / summary 写出。
-2. `config/gen/<name>`：目录式实验包。每个实验包私有维护 `data.py`、`model.py`、`utils.py`、`__init__.py` 与 README，并直接导出 `EXPERIMENT`。
-
-这意味着文档和命令需要以当前分支真实实现为准：
-
-1. 当前真实可用的 CLI 只有 `taac-train` 与 `taac-evaluate`。
-2. 当前回归入口是 `pytest tests -q`。
-3. 旧版文档里出现过的 `taac-visualize`、`taac-feature-*`、`taac-truncation-sweep`、`taac2026/experiments` 目录注册表，以及“黑板协议栈训练运行时”都不属于本分支当前实现。
+1. `src/taac2026`：共享底座，提供 FolderExperiment 加载、训练入口、评估入口、基础指标，以及 checkpoint / summary 的读写能力。
+2. `config/gen/<name>`：目录式实验包。每个包自己管理 `data.py`、`model.py`、`utils.py`、`__init__.py` 和一份 README，直接导出 `EXPERIMENT`。
 
 ## 快速开始
 
@@ -49,36 +42,21 @@ uv run taac-evaluate single --experiment config/gen/baseline
 uv run pytest tests -q
 ```
 
-在 Linux 上，`pyproject.toml` 已经把 `torch` 显式绑定到 PyTorch 官方 `cu128` 索引，因此这里的 `uv sync --locked` 会安装 CUDA 12.8 对应轮子，而不是跟随 PyPI 默认解析到 CUDA 13.0。
-
-补充说明：当前各实验包都在自身的 `__init__.py` 中内嵌了 sample parquet 默认路径与默认输出目录，因此不需要额外配置即可在样例数据上起跑。若要切换数据集，请复制一个本地实验包或写一个小的 wrapper 模块来覆写 `EXPERIMENT.data.dataset_path`。
-
 ## 当前独立实验包
 
-| 实验包         | 目录                                                   | 公开来源                                                                                                                                      | 默认输出目录                 | 当前可复核状态                                |
-| -------------- | ------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------- | --------------------------------------------- |
-| Baseline       | [config/gen/baseline](config/gen/baseline)             | 本仓库本地 unified baseline                                                                                                                   | `outputs/gen/baseline`       | 有 sample smoke summary                       |
-| CTR Baseline   | [config/gen/ctr_baseline](config/gen/ctr_baseline)     | [creatorwyx/TAAC2026-CTR-Baseline](https://github.com/creatorwyx/TAAC2026-CTR-Baseline)                                                       | `outputs/gen/ctr_baseline`   | 有 forward regression 与 sample smoke summary |
-| DeepContextNet | [config/gen/deepcontextnet](config/gen/deepcontextnet) | [suyanli220/TAAC-2026-Baseline-Tencent-Advertisement-Contest](https://github.com/suyanli220/TAAC-2026-Baseline-Tencent-Advertisement-Contest) | `outputs/gen/deepcontextnet` | 有 forward regression 与 sample smoke summary |
-| InterFormer    | [config/gen/interformer](config/gen/interformer)       | [InterFormer paper](https://arxiv.org/abs/2411.09852)                                                                                         | `outputs/gen/interformer`    | 有 forward regression 与 sample smoke summary |
-| OneTrans       | [config/gen/onetrans](config/gen/onetrans)             | [OneTrans paper](https://arxiv.org/abs/2510.26104)                                                                                            | `outputs/gen/onetrans`       | 有 forward regression 与 sample smoke summary |
-| HyFormer       | [config/gen/hyformer](config/gen/hyformer)             | [HyFormer paper](https://arxiv.org/abs/2601.12681)                                                                                            | `outputs/gen/hyformer`       | 有 forward regression 与 sample smoke summary |
-| UniRec         | [config/gen/unirec](config/gen/unirec)                 | [hojiahao/TAAC2026](https://github.com/hojiahao/TAAC2026)                                                                                     | `outputs/gen/unirec`         | 有 forward regression 与 sample smoke summary |
-| UniScaleFormer | [config/gen/uniscaleformer](config/gen/uniscaleformer) | [twx145/Unirec](https://github.com/twx145/Unirec)                                                                                             | `outputs/gen/uniscaleformer` | 有 forward regression 与 sample smoke summary |
-| O_o            | [config/gen/oo](config/gen/oo)                         | [salmon1802/O_o](https://github.com/salmon1802/O_o)                                                                                           | `outputs/gen/oo`             | 有 forward regression 与 sample smoke summary |
+| 实验包         | 目录                                                   | 公开来源                                                                                                                                      | 默认输出目录                 | 可复核状态                         |
+| -------------- | ------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------- | ---------------------------------- |
+| Baseline       | [config/gen/baseline](config/gen/baseline)             | 本仓库本地 unified baseline                                                                                                                   | `outputs/gen/baseline`       | 有 sample smoke summary            |
+| CTR Baseline   | [config/gen/ctr_baseline](config/gen/ctr_baseline)     | [creatorwyx/TAAC2026-CTR-Baseline](https://github.com/creatorwyx/TAAC2026-CTR-Baseline)                                                       | `outputs/gen/ctr_baseline`   | forward regression + smoke summary |
+| DeepContextNet | [config/gen/deepcontextnet](config/gen/deepcontextnet) | [suyanli220/TAAC-2026-Baseline-Tencent-Advertisement-Contest](https://github.com/suyanli220/TAAC-2026-Baseline-Tencent-Advertisement-Contest) | `outputs/gen/deepcontextnet` | forward regression + smoke summary |
+| InterFormer    | [config/gen/interformer](config/gen/interformer)       | [InterFormer paper](https://arxiv.org/abs/2411.09852)                                                                                         | `outputs/gen/interformer`    | forward regression + smoke summary |
+| OneTrans       | [config/gen/onetrans](config/gen/onetrans)             | [OneTrans paper](https://arxiv.org/abs/2510.26104)                                                                                            | `outputs/gen/onetrans`       | forward regression + smoke summary |
+| HyFormer       | [config/gen/hyformer](config/gen/hyformer)             | [HyFormer paper](https://arxiv.org/abs/2601.12681)                                                                                            | `outputs/gen/hyformer`       | forward regression + smoke summary |
+| UniRec         | [config/gen/unirec](config/gen/unirec)                 | [hojiahao/TAAC2026](https://github.com/hojiahao/TAAC2026)                                                                                     | `outputs/gen/unirec`         | forward regression + smoke summary |
+| UniScaleFormer | [config/gen/uniscaleformer](config/gen/uniscaleformer) | [twx145/Unirec](https://github.com/twx145/Unirec)                                                                                             | `outputs/gen/uniscaleformer` | forward regression + smoke summary |
+| O_o            | [config/gen/oo](config/gen/oo)                         | [salmon1802/O_o](https://github.com/salmon1802/O_o)                                                                                           | `outputs/gen/oo`             | forward regression + smoke summary |
 
-当前 2025 届公开方案里，只有 O_o 仍作为独立实验包维护；其它 2025 方案目前只保留为结构灵感和可迁移组件来源，不再在此分支里伪装成仍然存在的独立入口。
-
-## 当前验证边界
-
-1. 当前仓库聚焦线下 sample parquet 验证，不包含正式比赛环境的提交流程。
-2. `taac-evaluate batch` 当前不会自动吞掉错误；只要某个实验缺少 checkpoint 或 checkpoint 不兼容，整个 batch 评估就会停止。
-3. `src/taac2026/runtime.py` 中的 `Packet`、`Blackboard`、`LayerStack`、`Arbiter` 仍然保留，主要用于测试和后续扩展；主训练入口仍然是直接的 epoch / batch 循环。
-4. 当前 smoke 结果只用于证明链路可跑，不代表正式赛题上的可比结论。
-
-补充说明：当前 `config/gen` 下九个独立实验包的默认 `epochs` 都已经统一提升到 10，避免 sample smoke 因训练轮数过短而过度低估模型上限。
-
-更详细的训练命令、输出文件与当前 smoke 记录，见 [docs/dev.md](docs/dev.md) 与 [docs/EXPERIMENTS.md](docs/EXPERIMENTS.md)。
+更详细的训练命令、输出文件说明和当前 smoke 记录，可以看 [docs/dev.md](docs/dev.md) 和 [docs/EXPERIMENTS.md](docs/EXPERIMENTS.md)。
 
 ------
 
