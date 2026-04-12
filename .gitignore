@@ -3,6 +3,8 @@ outputs/
 .venv/
 __pycache__/
 .pytest_cache/
+.hypothesis/
+.coverage
 *.egg-info/
 site/
 .cache/

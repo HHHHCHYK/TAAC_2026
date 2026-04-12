@@ -84,6 +84,8 @@ uv run taac-evaluate single --experiment config/gen/baseline
 uv run pytest tests -q
 ```
 
+更细的测试分层、Property/Fault/Recovery 回归入口和模块改动后的最小复核集合，见 `TESTING.md`。
+
 ## 当前独立实验包
 
 | 实验包         | 目录                                                   | 公开来源                                                                                                                                      | 默认输出目录                 | 可复核状态                         |

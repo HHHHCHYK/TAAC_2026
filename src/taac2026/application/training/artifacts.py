@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import json
+import os
 from pathlib import Path
 
-from ...infrastructure.io.files import write_json
+from ...infrastructure.io.files import create_temporary_path, ensure_dir
 
 
 def render_training_curves_plot(
@@ -15,13 +17,10 @@ def render_training_curves_plot(
     if not train_losses:
         return
 
-    try:
-        import matplotlib
+    import matplotlib
 
-        matplotlib.use("Agg", force=True)
-        from matplotlib import pyplot as plt
-    except ModuleNotFoundError as exc:
-        raise RuntimeError("matplotlib is required to render training curves; run uv sync --locked") from exc
+    matplotlib.use("Agg", force=True)
+    from matplotlib import pyplot as plt
 
     epochs = list(range(1, len(train_losses) + 1))
     figure, (loss_axis, auc_axis) = plt.subplots(2, 1, figsize=(10, 8), sharex=True)
@@ -48,6 +47,11 @@ def render_training_curves_plot(
     plt.close(figure)
 
 
+def _write_training_curves_json(path: Path, curves: dict[str, object]) -> None:
+    with path.open("w", encoding="utf-8") as handle:
+        json.dump(curves, handle, ensure_ascii=False, indent=2, sort_keys=True)
+
+
 def write_training_curve_artifacts(
     output_dir: Path,
     train_losses: list[float],
@@ -55,20 +59,33 @@ def write_training_curve_artifacts(
     val_aucs: list[float],
     best_epoch: int,
 ) -> None:
+    output_dir = ensure_dir(output_dir)
     curves = {
         "train_loss": train_losses,
         "val_loss": val_losses,
         "val_auc": val_aucs,
         "best_epoch": best_epoch,
     }
-    write_json(output_dir / "training_curves.json", curves)
-    render_training_curves_plot(
-        output_path=output_dir / "training_curves.png",
-        train_losses=train_losses,
-        val_losses=val_losses,
-        val_aucs=val_aucs,
-        best_epoch=best_epoch,
-    )
+
+    json_target = output_dir / "training_curves.json"
+    plot_target = output_dir / "training_curves.png"
+    staged_json = create_temporary_path(json_target)
+    staged_plot = create_temporary_path(plot_target)
+    try:
+        _write_training_curves_json(staged_json, curves)
+        render_training_curves_plot(
+            output_path=staged_plot,
+            train_losses=train_losses,
+            val_losses=val_losses,
+            val_aucs=val_aucs,
+            best_epoch=best_epoch,
+        )
+        os.replace(staged_json, json_target)
+        os.replace(staged_plot, plot_target)
+    except Exception:
+        staged_json.unlink(missing_ok=True)
+        staged_plot.unlink(missing_ok=True)
+        raise
 
 
 __all__ = ["render_training_curves_plot", "write_training_curve_artifacts"]

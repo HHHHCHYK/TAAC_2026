@@ -7,7 +7,7 @@ import torch
 from ...domain.experiment import ExperimentSpec
 from ...domain.metrics import compute_classification_metrics, safe_mean
 from ...infrastructure.io.console import create_progress_bar, logger
-from ...infrastructure.io.files import ensure_dir, write_json
+from ...infrastructure.io.files import ensure_dir, replace_file, write_json
 from .artifacts import write_training_curve_artifacts
 from .external_profilers import (
     build_training_external_profiler_plan,
@@ -24,6 +24,10 @@ from .profiling import (
     set_random_seed,
 )
 from .runtime_optimization import prepare_runtime_execution
+
+
+def _write_best_checkpoint(path: str, payload: dict[str, Any]) -> None:
+    replace_file(path, lambda staged_path: torch.save(payload, staged_path))
 
 
 def run_training(
@@ -128,14 +132,14 @@ def run_training(
                 best_auc = val_auc
                 best_epoch = epoch
                 best_metrics = dict(val_metrics)
-                torch.save(
+                _write_best_checkpoint(
+                    output_dir / "best.pt",
                     {
                         "epoch": epoch,
                         "model_state_dict": model.state_dict(),
                         "metrics": val_metrics,
                         "runtime_optimization": runtime_execution.summary(),
                     },
-                    output_dir / "best.pt",
                 )
 
             write_training_curve_artifacts(

@@ -10,6 +10,7 @@ UNIT_TEST_FILES = {
     "test_experiment_packages.py",
     "test_metrics.py",
     "test_model_performance_plot.py",
+    "test_property_based.py",
     "test_payload.py",
     "test_profiling_unit.py",
     "test_runtime_optimization.py",
@@ -24,6 +25,7 @@ INTEGRATION_TEST_FILES = {
     "test_runtime_integration.py",
     "test_search.py",
     "test_search_worker_integration.py",
+    "test_training_recovery.py",
 }
 
 

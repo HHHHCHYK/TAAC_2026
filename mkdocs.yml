@@ -107,4 +107,5 @@ nav:
           - HyFormer: papers/hyformer.md
   - 维护:
       - 开发文档: dev.md
+      - 测试文档: testing.md
       - 路线图: TODO.md
