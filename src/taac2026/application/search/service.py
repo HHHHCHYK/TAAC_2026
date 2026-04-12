@@ -157,7 +157,7 @@ def _collect_worker_result(worker: SearchWorkerProcess) -> dict[str, Any]:
         try:
             with worker.result_path.open("r", encoding="utf-8") as handle:
                 result = json.load(handle)
-        except (OSError, JSONDecodeError) as exc:
+        except (OSError, UnicodeDecodeError, JSONDecodeError) as exc:
             message = stderr.strip() or stdout.strip() or str(exc)
             return {"status": "fail", "trial_error": f"invalid worker result payload: {message}"}
 

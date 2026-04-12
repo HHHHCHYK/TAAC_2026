@@ -60,6 +60,22 @@ def test_collect_worker_result_handles_invalid_json_fault(tmp_path: Path) -> Non
     assert "invalid worker result payload" in result["trial_error"]
 
 
+def test_collect_worker_result_handles_invalid_utf8_fault(tmp_path: Path) -> None:
+    result_path = tmp_path / "worker_result.json"
+    result_path.write_bytes(b"\xff\xfe\xfd")
+    worker = SearchWorkerProcess(
+        trial=None,
+        process=_CompletedProcess(returncode=1, stderr="worker payload decode failure"),
+        result_path=result_path,
+        physical_gpu_index=None,
+    )
+
+    result = _collect_worker_result(worker)
+
+    assert result["status"] == "fail"
+    assert "invalid worker result payload" in result["trial_error"]
+
+
 def test_worker_main_writes_failure_payload_when_trial_execution_raises(
     test_workspace: TestWorkspace,
     monkeypatch: pytest.MonkeyPatch,
