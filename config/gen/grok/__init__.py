@@ -11,7 +11,7 @@ from .utils import build_loss_stack, build_optimizer_component
 
 
 ROOT = Path(__file__).resolve().parents[3]
-DEFAULT_DATASET = ROOT / "data" / "datasets--TAAC2026--data_sample_1000" / "snapshots" / "2f0ddba721a8323495e73d5229c836df5d603b39" / "sample_data.parquet"
+DEFAULT_DATASET = ROOT / "data" / "datasets--TAAC2026--data_sample_1000"
 DEFAULT_OUTPUT_DIR = ROOT / "outputs" / "gen" / "grok"
 
 

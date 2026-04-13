@@ -9,16 +9,15 @@ reproducible and easy to trace back to the package itself.
 
 import math
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Any, Iterable
 
 import numpy as np
-import pyarrow.parquet as pq
 import torch
 from torch.utils.data import DataLoader, Dataset
 
 from taac2026.domain.config import DataConfig
 from taac2026.domain.types import BatchTensors, DataStats
+from taac2026.infrastructure.io.datasets import iter_dataset_rows
 from taac2026.infrastructure.io.files import stable_hash64
 
 
@@ -97,24 +96,6 @@ class _EncodedDataset(Dataset[_EncodedSample]):
 
 	def __getitem__(self, index: int) -> _EncodedSample:
 		return self._samples[index]
-
-
-def _resolve_dataset_path(dataset_path: str) -> Path:
-	path = Path(dataset_path).expanduser()
-	if path.is_file():
-		return path
-	if path.is_dir():
-		candidates = sorted(path.rglob("*.parquet"))
-		if candidates:
-			return candidates[0]
-	raise FileNotFoundError(f"Cannot resolve parquet dataset from {dataset_path}")
-
-
-def _iter_rows(dataset_path: Path, batch_rows: int) -> Iterable[dict[str, Any]]:
-	parquet = pq.ParquetFile(dataset_path)
-	for batch in parquet.iter_batches(batch_size=max(1, batch_rows)):
-		for row in batch.to_pylist():
-			yield row
 
 
 def _sort_rows_by_timestamp(rows: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -665,8 +646,7 @@ def load_dataloaders(
 	seed: int,
 ) -> tuple[DataLoader[BatchTensors], DataLoader[BatchTensors], DataStats]:
 	del seed
-	dataset_path = _resolve_dataset_path(config.dataset_path)
-	sorted_rows = _sort_rows_by_timestamp(_iter_rows(dataset_path, config.stream_batch_rows))
+	sorted_rows = _sort_rows_by_timestamp(iter_dataset_rows(config.dataset_path))
 	train_rows, val_rows = _time_split(sorted_rows, config.val_ratio)
 	item_logq_lookup, default_item_logq = _build_item_logq_lookup(train_rows)
 

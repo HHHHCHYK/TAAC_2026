@@ -9,6 +9,7 @@ from .console import (
     stderr_console,
     stdout_console,
 )
+from .datasets import resolve_parquet_dataset_path
 from .files import ensure_dir, stable_hash64, write_json
 
 __all__ = [
@@ -20,6 +21,7 @@ __all__ = [
     "print_json",
     "print_panel",
     "print_summary_table",
+    "resolve_parquet_dataset_path",
     "stable_hash64",
     "stderr_console",
     "stdout_console",

@@ -5,7 +5,7 @@ icon: material/rocket-launch-outline
 
 # 快速开始
 
-这页解决四件事：把环境拉起来、把 starter baseline 跑起来、看懂输出目录、知道如何切到自己的数据路径。
+这页解决五件事：把环境拉起来、把样例数据下到仓库默认路径、把 starter baseline 跑起来、看懂输出目录、知道如何切到自己的数据路径。
 
 ## 1. 环境准备
 
@@ -24,7 +24,23 @@ uv sync --locked
 !!! info "PyTorch 轮子来源"
     Linux 环境下，`torch` 通过 `pyproject.toml` 的 uv source 固定到 PyTorch 官方 `cu128` 索引。也就是说，这里的环境同步会安装 CUDA 12.8 轮子，而不是继续跟随最新版默认索引。
 
-## 2. 第一次跑通
+## 2. 下载样例数据
+
+内置实验包默认读取 Hugging Face 数据集 `TAAC2026/data_sample_1000` 在仓库 `data/` 缓存下的本地副本，并会自动解析当前缓存里可用的 snapshot。推荐直接用 `huggingface_hub.snapshot_download`，并把缓存根目录指到仓库下的 `data/`：
+
+```bash
+uv run --with huggingface_hub python -c "from huggingface_hub import snapshot_download; print(snapshot_download(repo_id='TAAC2026/data_sample_1000', repo_type='dataset', cache_dir='data'))"
+```
+
+命令完成后，Hugging Face 会在下面这个缓存目录下创建 `refs/`、`snapshots/` 等结构；默认实验会从这里自动找到实际的 parquet 文件：
+
+```text
+data/datasets--TAAC2026--data_sample_1000/
+```
+
+该样例数据是公开数据集，默认不需要登录；如果这个路径已经存在，可以直接跳到下一节。
+
+## 3. 第一次跑通
 
 === "训练"
 
@@ -65,12 +81,12 @@ uv sync --locked
 !!! info "baseline 和 grok 的区别"
     `config/gen/baseline` 现在是面向扩展的 starter/reference package；如果你想跑原来那条更激进的本地 unified backbone，请改用 `config/gen/grok`。
 
-## 3. 当前仓库默认怎么找数据
+## 4. 当前仓库默认怎么找数据
 
-当前实验包已经在各自的 `__init__.py` 中写死了 sample parquet 默认路径：
+当前实验包已经在各自的 `__init__.py` 中把默认数据目录指到 Hugging Face 缓存根目录；运行时会优先跟随 `refs/main`，再回退到 `snapshots/` 下可用的 parquet：
 
 ```text
-data/datasets--TAAC2026--data_sample_1000/snapshots/2f0ddba721a8323495e73d5229c836df5d603b39/sample_data.parquet
+data/datasets--TAAC2026--data_sample_1000/
 ```
 
 当前 CLI 没有 `--dataset-path` 覆写参数。如果你要切到别的数据集，推荐做法是写一个本地 wrapper 实验包：
@@ -85,7 +101,7 @@ EXPERIMENT.train.output_dir = "outputs/custom/oo"
 
 然后把这个本地目录传给 `--experiment`。
 
-## 4. 输出目录里会出现什么
+## 5. 输出目录里会出现什么
 
 每次训练当前会在输出目录写入四类主要产物：
 
@@ -98,7 +114,7 @@ EXPERIMENT.train.output_dir = "outputs/custom/oo"
 
 如果启用了 `torch.compile` 或 AMP，`summary.json` 和评估输出里还会包含 `runtime_optimization` 字段，用来记录请求状态、实际是否生效，以及可能的降级原因。
 
-## 5. 初次浏览建议
+## 6. 初次浏览建议
 
 1. 如果你只是想跑通链路，继续看[CLI 指南](cli.md)即可。
 2. 如果你要挑模型或看 smoke 记录，直接跳到[实验包与验证记录](experiments.md)。

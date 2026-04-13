@@ -28,15 +28,15 @@ uv run taac-train --experiment config/gen/baseline
 
 当前参数非常少：
 
-| 参数           | 说明                       |
-| -------------- | -------------------------- |
-| `--experiment` | 实验包目录路径或模块路径。 |
-| `--run-dir`    | 覆盖默认输出目录。         |
-| `--compile`    | 启用 `torch.compile`。     |
-| `--compile-backend` | 覆盖 `torch.compile` backend。 |
-| `--compile-mode` | 覆盖 `torch.compile` mode。 |
-| `--amp`        | 启用 AMP autocast。        |
-| `--amp-dtype`  | AMP dtype，当前只支持 `float16` / `bfloat16`。 |
+| 参数                | 说明                                           |
+| ------------------- | ---------------------------------------------- |
+| `--experiment`      | 实验包目录路径或模块路径。                     |
+| `--run-dir`         | 覆盖默认输出目录。                             |
+| `--compile`         | 启用 `torch.compile`。                         |
+| `--compile-backend` | 覆盖 `torch.compile` backend。                 |
+| `--compile-mode`    | 覆盖 `torch.compile` mode。                    |
+| `--amp`             | 启用 AMP autocast。                            |
+| `--amp-dtype`       | AMP dtype，当前只支持 `float16` / `bfloat16`。 |
 
 如果只想把输出落到单独目录：
 
