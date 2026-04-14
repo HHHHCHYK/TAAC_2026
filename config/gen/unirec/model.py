@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import math
-from typing import Dict, Tuple
+from functools import lru_cache
 
 import torch
 import torch.nn.functional as F
@@ -13,14 +13,6 @@ from taac2026.domain.types import BatchTensors
 from .data import TIME_GAP_BUCKET_COUNT
 from .utils import masked_mean
 
-# ── Attention mask cache (avoids rebuilding every forward pass) ──
-_mask_cache: Dict[Tuple, torch.Tensor] = {}
-
-
-def clear_mask_cache() -> None:
-	"""Call when sequence length changes or at start of new epoch."""
-	_mask_cache.clear()
-
 
 def masked_last(tokens: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
 	positions = torch.arange(mask.shape[1], device=mask.device).unsqueeze(0).expand_as(mask)
@@ -29,15 +21,14 @@ def masked_last(tokens: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
 	return tokens[batch_indices, last_indices]
 
 
+@lru_cache(maxsize=8)
 def build_causal_mask(seq_len: int, device: torch.device) -> torch.Tensor:
-	key = ("causal", seq_len, str(device))
-	if key not in _mask_cache:
-		row_idx = torch.arange(seq_len, device=device).unsqueeze(1)
-		col_idx = torch.arange(seq_len, device=device).unsqueeze(0)
-		_mask_cache[key] = (col_idx <= row_idx).unsqueeze(0).unsqueeze(0)
-	return _mask_cache[key]
+	row_idx = torch.arange(seq_len, device=device).unsqueeze(1)
+	col_idx = torch.arange(seq_len, device=device).unsqueeze(0)
+	return (col_idx <= row_idx).unsqueeze(0).unsqueeze(0)
 
 
+@lru_cache(maxsize=8)
 def build_unified_attention_mask(
 	seq_len: int,
 	n_feature_tokens: int,
@@ -46,24 +37,21 @@ def build_unified_attention_mask(
 	local_window: int,
 	device: torch.device,
 ) -> torch.Tensor:
-	key = ("unified", seq_len, n_feature_tokens, n_special_tokens, global_window, local_window, str(device))
-	if key not in _mask_cache:
-		row_idx = torch.arange(seq_len, device=device).unsqueeze(1)
-		col_idx = torch.arange(seq_len, device=device).unsqueeze(0)
-		causal = col_idx <= row_idx
-		global_m = col_idx < global_window
-		local_m = (row_idx - col_idx) < max(1, local_window)
-		mask = causal & (global_m | local_m)
+	row_idx = torch.arange(seq_len, device=device).unsqueeze(1)
+	col_idx = torch.arange(seq_len, device=device).unsqueeze(0)
+	causal = col_idx <= row_idx
+	global_m = col_idx < global_window
+	local_m = (row_idx - col_idx) < max(1, local_window)
+	mask = causal & (global_m | local_m)
 
-		if n_feature_tokens > 0:
-			mask[:n_feature_tokens, :n_feature_tokens] = True
-			mask[n_feature_tokens:, :n_feature_tokens] = True
+	if n_feature_tokens > 0:
+		mask[:n_feature_tokens, :n_feature_tokens] = True
+		mask[n_feature_tokens:, :n_feature_tokens] = True
 
-		if n_special_tokens > 0:
-			mask[-n_special_tokens:, :] = True
+	if n_special_tokens > 0:
+		mask[-n_special_tokens:, :] = True
 
-		_mask_cache[key] = mask.unsqueeze(0).unsqueeze(0)
-	return _mask_cache[key]
+	return mask.unsqueeze(0).unsqueeze(0)
 
 
 class SiLUAttention(nn.Module):
@@ -216,11 +204,13 @@ class MixtureOfTransducers(nn.Module):
 		self.branches = nn.ModuleList([BranchTransducer(dim, num_heads, num_layers, dropout) for _ in range(num_branches)])
 		self.fusion = GatedFusion(dim, num_branches)
 		self._cuda_streams: list[torch.cuda.Stream] | None = None
+		self._streams_device: torch.device | None = None
 
-	def _get_cuda_streams(self) -> list[torch.cuda.Stream]:
+	def _get_cuda_streams(self, device: torch.device) -> list[torch.cuda.Stream]:
 		"""Lazily create and cache CUDA streams for branch parallelism."""
-		if self._cuda_streams is None:
-			self._cuda_streams = [torch.cuda.Stream() for _ in range(len(self.branches) - 1)]
+		if self._cuda_streams is None or self._streams_device != device:
+			self._cuda_streams = [torch.cuda.Stream(device=device) for _ in range(len(self.branches) - 1)]
+			self._streams_device = device
 		return self._cuda_streams
 
 	def forward(
@@ -230,7 +220,7 @@ class MixtureOfTransducers(nn.Module):
 	) -> torch.Tensor:
 		if branch_tokens_list[0].is_cuda and len(self.branches) >= 3:
 			# CUDA stream parallelism for independent branches
-			streams = self._get_cuda_streams()
+			streams = self._get_cuda_streams(branch_tokens_list[0].device)
 			outputs: list[torch.Tensor | None] = [None] * len(self.branches)
 			for i, stream in enumerate(streams):
 				with torch.cuda.stream(stream):
