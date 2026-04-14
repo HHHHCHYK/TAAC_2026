@@ -156,7 +156,7 @@ def build_optimizer_component(model, train_config):
 		optimizers.append(
 			Muon(
 				muon_params,
-				lr=train_config.learning_rate,
+				lr=0.02,
 				momentum=0.95,
 				ns_steps=5,
 				weight_decay=train_config.weight_decay,

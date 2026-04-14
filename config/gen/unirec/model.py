@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import math
+from functools import lru_cache
 
 import torch
 import torch.nn.functional as F
@@ -20,12 +21,14 @@ def masked_last(tokens: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
 	return tokens[batch_indices, last_indices]
 
 
+@lru_cache(maxsize=8)
 def build_causal_mask(seq_len: int, device: torch.device) -> torch.Tensor:
 	row_idx = torch.arange(seq_len, device=device).unsqueeze(1)
 	col_idx = torch.arange(seq_len, device=device).unsqueeze(0)
 	return (col_idx <= row_idx).unsqueeze(0).unsqueeze(0)
 
 
+@lru_cache(maxsize=8)
 def build_unified_attention_mask(
 	seq_len: int,
 	n_feature_tokens: int,
@@ -37,17 +40,13 @@ def build_unified_attention_mask(
 	row_idx = torch.arange(seq_len, device=device).unsqueeze(1)
 	col_idx = torch.arange(seq_len, device=device).unsqueeze(0)
 	causal = col_idx <= row_idx
-	local_mask = (row_idx - col_idx) < max(1, local_window)
-	mask = causal & local_mask
+	global_m = col_idx < global_window
+	local_m = (row_idx - col_idx) < max(1, local_window)
+	mask = causal & (global_m | local_m)
 
 	if n_feature_tokens > 0:
 		mask[:n_feature_tokens, :n_feature_tokens] = True
 		mask[n_feature_tokens:, :n_feature_tokens] = True
-
-	sequence_end = seq_len - n_special_tokens
-	if global_window > 0 and sequence_end > n_feature_tokens:
-		global_end = min(sequence_end, n_feature_tokens + global_window)
-		mask[n_feature_tokens:, n_feature_tokens:global_end] = True
 
 	if n_special_tokens > 0:
 		mask[-n_special_tokens:, :] = True
@@ -78,17 +77,16 @@ class SiLUAttention(nn.Module):
 		value = value.view(batch_size, token_count, self.num_heads, self.head_dim).transpose(1, 2)
 		gate = gate.view(batch_size, token_count, self.num_heads, self.head_dim).transpose(1, 2)
 
-		scores = torch.matmul(query, key.transpose(-2, -1)) / math.sqrt(self.head_dim)
+		scores = torch.matmul(query, key.transpose(-2, -1)) * (1.0 / math.sqrt(self.head_dim))
 		weights = F.silu(scores)
 		if attn_mask is not None:
 			weights = weights * attn_mask.to(dtype=weights.dtype)
-		weights = weights / weights.abs().sum(dim=-1, keepdim=True).clamp_min(1.0)
 		weights = self.dropout(weights)
 
 		attended = torch.matmul(weights, value)
 		attended = self.norm_attn(attended)
 		attended = attended * gate
-		attended = attended.transpose(1, 2).contiguous().view(batch_size, token_count, hidden_dim)
+		attended = attended.transpose(1, 2).reshape(batch_size, token_count, hidden_dim)
 		return self.out_proj(attended)
 
 
@@ -120,29 +118,57 @@ class UnifiedTransducerBlock(nn.Module):
 
 
 class BlockAttnRes(nn.Module):
-	def __init__(self, dim: int) -> None:
+	"""Block Attention Residuals (Kimi, arXiv:2603.15031).
+
+	Per-layer pseudo-queries (initialized to zero) attend over block
+	summaries (last-token pooled).  Replaces fixed residual accumulation
+	with learned softmax attention over depth.
+
+	Benefits:
+	  - Mitigates PreNorm dilution with bounded output magnitudes
+	  - Equivalent to ~1.25x compute advantage in scaling law
+	  - <2% inference overhead (last-token summary is O(N·D))
+	"""
+
+	def __init__(self, dim: int, total_layers: int) -> None:
 		super().__init__()
-		self.res_proj = nn.Linear(dim, dim, bias=False)
-		self.res_norm = nn.LayerNorm(dim)
+		self.dim = dim
+		self.pseudo_queries = nn.ParameterList(
+			[nn.Parameter(torch.zeros(dim)) for _ in range(total_layers)]
+		)
+		NormClass = nn.RMSNorm if hasattr(nn, "RMSNorm") else nn.LayerNorm
+		self.res_norm = NormClass(dim)
 
 	def forward(
 		self,
-		current: torch.Tensor,
-		block_outputs: list[torch.Tensor],
-		partial_block: torch.Tensor,
-	) -> tuple[torch.Tensor, torch.Tensor]:
-		partial_block = partial_block + current
-		if not block_outputs:
-			return partial_block, partial_block
+		layer_idx: int,
+		layer_output: torch.Tensor,
+		block_summaries: list[torch.Tensor],
+		partial_sum: torch.Tensor,
+	) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+		"""Returns (h_l, updated_partial_sum, current_last_token)."""
+		current_last = layer_output[:, -1, :]  # (B, D)
+		partial_sum = partial_sum + current_last
 
-		block_summaries = torch.stack([block[:, -1, :] for block in block_outputs], dim=1)
-		block_summaries = self.res_norm(block_summaries)
-		query = self.res_proj(partial_block[:, -1, :]).unsqueeze(1)
-		scores = torch.matmul(query, block_summaries.transpose(-1, -2)) / math.sqrt(query.shape[-1])
-		weights = torch.softmax(scores, dim=-1)
-		stacked = torch.stack(block_outputs, dim=1)
-		attended = (weights.unsqueeze(-1) * stacked).sum(dim=1)
-		return partial_block + attended, partial_block
+		if len(block_summaries) == 0:
+			return layer_output, partial_sum, current_last
+
+		w_l = self.pseudo_queries[layer_idx]  # (D,)
+		keys = torch.stack(block_summaries, dim=1)  # (B, N, D)
+		keys = self.res_norm(keys)
+
+		scores = torch.matmul(keys, w_l) * (1.0 / math.sqrt(self.dim))  # (B, N)
+		weights = F.softmax(scores, dim=-1)  # (B, N)
+
+		inter_block = torch.matmul(weights.unsqueeze(1), keys).squeeze(1)  # (B, D)
+		combined = layer_output + inter_block.unsqueeze(1)  # (B, L, D)
+
+		# Re-derive last token from post-residual output so partial_sum
+		# stays consistent with the hidden states actually propagated.
+		current_last = combined[:, -1, :]
+		partial_sum = partial_sum - layer_output[:, -1, :] + current_last
+
+		return combined, partial_sum, current_last
 
 
 class BranchTransducer(nn.Module):
@@ -182,12 +208,32 @@ class MixtureOfTransducers(nn.Module):
 		super().__init__()
 		self.branches = nn.ModuleList([BranchTransducer(dim, num_heads, num_layers, dropout) for _ in range(num_branches)])
 		self.fusion = GatedFusion(dim, num_branches)
+		self._cuda_streams: list[torch.cuda.Stream] | None = None
+		self._streams_device: torch.device | None = None
+
+	def _get_cuda_streams(self, device: torch.device) -> list[torch.cuda.Stream]:
+		"""Lazily create and cache CUDA streams for branch parallelism."""
+		if self._cuda_streams is None or self._streams_device != device:
+			self._cuda_streams = [torch.cuda.Stream(device=device) for _ in range(len(self.branches) - 1)]
+			self._streams_device = device
+		return self._cuda_streams
 
 	def forward(
 		self,
 		branch_tokens_list: list[torch.Tensor],
 		branch_mask_list: list[torch.Tensor],
 	) -> torch.Tensor:
+		if branch_tokens_list[0].is_cuda and len(self.branches) >= 3:
+			# CUDA stream parallelism for independent branches
+			streams = self._get_cuda_streams(branch_tokens_list[0].device)
+			outputs: list[torch.Tensor | None] = [None] * len(self.branches)
+			for i, stream in enumerate(streams):
+				with torch.cuda.stream(stream):
+					outputs[i] = self.branches[i](branch_tokens_list[i], branch_mask_list[i])
+			outputs[-1] = self.branches[-1](branch_tokens_list[-1], branch_mask_list[-1])
+			for stream in streams:
+				torch.cuda.current_stream().wait_stream(stream)
+			return self.fusion(outputs)  # type: ignore[arg-type]
 		outputs = [branch(tokens, mask) for branch, tokens, mask in zip(self.branches, branch_tokens_list, branch_mask_list, strict=True)]
 		return self.fusion(outputs)
 
@@ -208,8 +254,8 @@ class UniRecModel(nn.Module):
 			"candidate_author",
 		)
 		self.n_feature_tokens = len(self.feature_token_names)
-		self.global_window = 4
-		self.local_window = max(8, data_config.max_seq_len // 2)
+		self.global_window = max(128, self.n_feature_tokens + 8)
+		self.local_window = 128
 		self.truncated_seq_len = max(0, model_config.recent_seq_len)
 		self.attn_res_block_size = max(1, model_config.memory_slots)
 
@@ -311,7 +357,7 @@ class UniRecModel(nn.Module):
 				for _ in range(truncated_layers)
 			]
 		)
-		self.block_attn_res = BlockAttnRes(model_config.hidden_dim)
+		self.block_attn_res = BlockAttnRes(model_config.hidden_dim, len(self.full_blocks) + len(self.truncated_blocks))
 		self.final_norm = nn.LayerNorm(model_config.hidden_dim)
 		head_hidden_dim = model_config.head_hidden_dim or model_config.hidden_dim * 2
 		self.head = nn.Sequential(
@@ -521,20 +567,28 @@ class UniRecModel(nn.Module):
 		hidden_states, padding_mask, n_feature_tokens, n_special_tokens = self._build_unified_sequence(batch)
 		attention_mask = self._compose_attention_mask(padding_mask, n_feature_tokens, n_special_tokens)
 
-		block_outputs: list[torch.Tensor] = []
-		partial_block = torch.zeros_like(hidden_states)
-		layer_count = 0
+		batch_size = hidden_states.shape[0]
+		dim = hidden_states.shape[2]
+		block_summaries: list[torch.Tensor] = []
+		partial_sum = hidden_states.new_zeros((batch_size, dim))
+		layer_idx = 0
 
 		for block in self.full_blocks:
 			hidden_states = block(hidden_states, attention_mask)
 			hidden_states = hidden_states * padding_mask.unsqueeze(-1).float()
-			layer_count += 1
-			hidden_states, partial_block = self.block_attn_res(hidden_states, block_outputs, partial_block)
+			hidden_states, partial_sum, _ = self.block_attn_res(
+				layer_idx, hidden_states, block_summaries, partial_sum,
+			)
 			hidden_states = hidden_states * padding_mask.unsqueeze(-1).float()
-			partial_block = partial_block * padding_mask.unsqueeze(-1).float()
-			if layer_count % self.attn_res_block_size == 0:
-				block_outputs.append(partial_block)
-				partial_block = torch.zeros_like(hidden_states)
+			layer_idx += 1
+			if layer_idx % self.attn_res_block_size == 0:
+				block_summaries.append(partial_sum)
+				partial_sum = hidden_states.new_zeros((batch_size, dim))
+
+		# Save remaining partial_sum if there is an incomplete residual-attention block.
+		if layer_idx % self.attn_res_block_size != 0:
+			block_summaries.append(partial_sum)
+			partial_sum = hidden_states.new_zeros((batch_size, dim))
 
 		if self.truncated_blocks and self.truncated_seq_len > 0:
 			special_start = hidden_states.shape[1] - n_special_tokens
@@ -564,6 +618,14 @@ class UniRecModel(nn.Module):
 				for block in self.truncated_blocks:
 					truncated_tokens = block(truncated_tokens, truncated_mask)
 					truncated_tokens = truncated_tokens * truncated_padding.unsqueeze(-1).float()
+					truncated_tokens, partial_sum, _ = self.block_attn_res(
+						layer_idx, truncated_tokens, block_summaries, partial_sum,
+					)
+					truncated_tokens = truncated_tokens * truncated_padding.unsqueeze(-1).float()
+					layer_idx += 1
+					if layer_idx % self.attn_res_block_size == 0:
+						block_summaries.append(partial_sum)
+						partial_sum = hidden_states.new_zeros((batch_size, dim))
 
 				updated_recent = truncated_tokens[:, n_feature_tokens:n_feature_tokens + recent_len]
 				updated_special = truncated_tokens[:, -n_special_tokens:]
