@@ -3,6 +3,9 @@ site_name = "TAAC 2026 Docs"
 site_description = "TAAC 2026 训练框架、实验包与开发约定"
 site_author = "TAAC 2026 Team"
 site_url = "https://puiching-memory.github.io/TAAC_2026/"
+repo_url = "https://github.com/Puiching-Memory/TAAC_2026"
+repo_name = "Puiching-Memory/TAAC_2026"
+edit_uri = "edit/main/docs/"
 
 extra_css = ["assets/stylesheets/extra.css"]
 extra_javascript = [
@@ -48,8 +51,11 @@ nav = [
 # --------------------------------------------------------------------------
 [project.theme]
 language = "zh"
+custom_dir = "docs/overrides"
 
 features = [
+    "content.action.edit",
+    "content.action.view",
     "content.code.copy",
     "content.code.select",
     "content.tabs.link",
@@ -67,6 +73,9 @@ features = [
     "search.highlight",
     "toc.follow",
 ]
+
+[project.theme.icon]
+repo = "fontawesome/brands/github"
 
 [project.theme.font]
 text = "IBM Plex Sans"
