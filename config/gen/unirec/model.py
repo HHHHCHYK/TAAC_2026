@@ -215,6 +215,13 @@ class MixtureOfTransducers(nn.Module):
 		super().__init__()
 		self.branches = nn.ModuleList([BranchTransducer(dim, num_heads, num_layers, dropout) for _ in range(num_branches)])
 		self.fusion = GatedFusion(dim, num_branches)
+		self._cuda_streams: list[torch.cuda.Stream] | None = None
+
+	def _get_cuda_streams(self) -> list[torch.cuda.Stream]:
+		"""Lazily create and cache CUDA streams for branch parallelism."""
+		if self._cuda_streams is None:
+			self._cuda_streams = [torch.cuda.Stream() for _ in range(len(self.branches) - 1)]
+		return self._cuda_streams
 
 	def forward(
 		self,
@@ -223,7 +230,7 @@ class MixtureOfTransducers(nn.Module):
 	) -> torch.Tensor:
 		if branch_tokens_list[0].is_cuda and len(self.branches) >= 3:
 			# CUDA stream parallelism for independent branches
-			streams = [torch.cuda.Stream() for _ in range(len(self.branches) - 1)]
+			streams = self._get_cuda_streams()
 			outputs: list[torch.Tensor | None] = [None] * len(self.branches)
 			for i, stream in enumerate(streams):
 				with torch.cuda.stream(stream):
@@ -567,9 +574,8 @@ class UniRecModel(nn.Module):
 
 		batch_size = hidden_states.shape[0]
 		dim = hidden_states.shape[2]
-		device = hidden_states.device
 		block_summaries: list[torch.Tensor] = []
-		partial_sum = torch.zeros(batch_size, dim, device=device)
+		partial_sum = hidden_states.new_zeros((batch_size, dim))
 		layer_idx = 0
 
 		for block in self.full_blocks:
@@ -582,12 +588,12 @@ class UniRecModel(nn.Module):
 			layer_idx += 1
 			if layer_idx % self.attn_res_block_size == 0:
 				block_summaries.append(partial_sum)
-				partial_sum = torch.zeros(batch_size, dim, device=device)
+				partial_sum = hidden_states.new_zeros((batch_size, dim))
 
-		# Save remaining partial_sum as block if non-empty
-		if partial_sum.abs().sum() > 0:
+		# Save remaining partial_sum if there is an incomplete residual-attention block.
+		if layer_idx % self.attn_res_block_size != 0:
 			block_summaries.append(partial_sum)
-			partial_sum = torch.zeros(batch_size, dim, device=device)
+			partial_sum = hidden_states.new_zeros((batch_size, dim))
 
 		if self.truncated_blocks and self.truncated_seq_len > 0:
 			special_start = hidden_states.shape[1] - n_special_tokens
@@ -623,7 +629,7 @@ class UniRecModel(nn.Module):
 					layer_idx += 1
 					if layer_idx % self.attn_res_block_size == 0:
 						block_summaries.append(partial_sum)
-						partial_sum = torch.zeros(batch_size, dim, device=device)
+						partial_sum = hidden_states.new_zeros((batch_size, dim))
 
 				updated_recent = truncated_tokens[:, n_feature_tokens:n_feature_tokens + recent_len]
 				updated_special = truncated_tokens[:, -n_special_tokens:]
