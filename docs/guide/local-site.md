@@ -34,6 +34,6 @@ uv run --no-project --isolated --with zensical zensical serve
 
 ## 故障排查
 
-- **端口被占用**：`zensical serve --dev-addr 127.0.0.1:8001` 换一个端口。
+- **端口被占用**：`uv run --no-project --isolated --with zensical zensical serve --dev-addr 127.0.0.1:8001` 换一个端口。
 - **样式或脚本未生效**：加 `--clean` 重新构建，或清除浏览器缓存。
 - **导航项不显示**：检查 `zensical.toml` 中 `nav` 的路径是否与 `docs/` 下的文件路径一致。

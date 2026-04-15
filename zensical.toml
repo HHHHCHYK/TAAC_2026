@@ -40,13 +40,6 @@ nav = [
         { "索引" = "ideas/index.md" },
         { "特征Token化·长序列注意力·辅助Loss" = "ideas/posts/001-rec-model-work-summary.md" },
     ] },
-    { "数据集分析" = [
-        { "总览" = "analysis/index.md" },
-        { "上届论文洞察" = "analysis/taac2025-insights.md" },
-        { "特征模式对比" = "analysis/feature-schema.md" },
-        { "EDA 指南" = "analysis/dataset-eda.md" },
-        { "评估指标分析" = "analysis/evaluation.md" },
-    ] },
     { "论文" = [
         { "HyFormer" = "papers/hyformer.md" },
         { "InterFormer" = "papers/interformer.md" },
