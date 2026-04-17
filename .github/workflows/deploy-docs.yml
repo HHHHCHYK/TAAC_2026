@@ -54,7 +54,7 @@ jobs:
 
       - name: Restore EDA figures cache
         id: cache-eda-figures
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v5
         with:
           path: docs/assets/figures/eda
           key: ${{ runner.os }}-docs-eda-${{ hashFiles('pyproject.toml', 'uv.lock', 'src/taac2026/application/reporting/eda_cli.py', 'src/taac2026/domain/metrics.py', 'src/taac2026/infrastructure/io/datasets.py', 'src/taac2026/reporting/dataset_eda.py') }}
@@ -65,14 +65,14 @@ jobs:
 
       - name: Save EDA figures cache
         if: steps.cache-eda-figures.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v5
         with:
           path: docs/assets/figures/eda
           key: ${{ steps.cache-eda-figures.outputs.cache-primary-key }}
 
       - name: Restore tech timeline cache
         id: cache-tech-timeline
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v5
         with:
           path: |
             .cache/taac2026
@@ -89,7 +89,7 @@ jobs:
 
       - name: Save tech timeline cache
         if: steps.cache-tech-timeline.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v5
         with:
           path: |
             .cache/taac2026
