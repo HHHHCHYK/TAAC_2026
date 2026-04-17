@@ -41,6 +41,7 @@ nav = [
     { "指南" = [
         { "超参数搜索" = "guide/search.md" },
         { "测试" = "guide/testing.md" },
+        { "仓库日志管理" = "guide/repo-log-management.md" },
         { "本地生成站点" = "guide/local-site.md" },
         { "新增实验包" = "guide/contributing.md" },
     ] },

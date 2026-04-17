@@ -41,12 +41,13 @@ taac-train = "taac2026.application.training.cli:main"
 taac-evaluate = "taac2026.application.evaluation.cli:main"
 taac-search = "taac2026.application.search.cli:main"
 taac-clean-pycache = "taac2026.application.maintenance.clean_pycache:main"
+taac-clean-github-logs = "taac2026.application.maintenance.github_cleanup:main"
 taac-plot-model-performance = "taac2026.application.reporting.cli:main"
 taac-dataset-eda = "taac2026.application.reporting.eda_cli:main"
 taac-tech-timeline = "taac2026.application.reporting.timeline_cli:main"
 
 [tool.setuptools]
-package-dir = {"" = "src"}
+package-dir = { "" = "src" }
 
 [tool.setuptools.packages.find]
 where = ["src"]
