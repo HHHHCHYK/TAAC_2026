@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 import torch
 
-from config.gen.baseline.data import DENSE_FEATURE_DIM, load_dataloaders
+from config.baseline.data import DENSE_FEATURE_DIM, load_dataloaders
 from taac2026.infrastructure.io.files import stable_hash64
 from tests.support import TestWorkspace, build_edge_case_rows, create_test_workspace
 

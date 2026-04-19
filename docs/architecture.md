@@ -12,7 +12,7 @@ TAAC_2026/
 │   ├── domain/            # 领域模型：配置、指标、运行时
 │   ├── application/       # 应用层：训练、评估、搜索、报告 CLI
 │   └── infrastructure/    # 基础设施：实验加载、数据集解析、GPU 调度
-├── config/gen/            # 目录式实验包（每个包独立）
+├── config/                # 目录式实验包（每个包独立）
 ├── tests/                 # 测试套件
 ├── docs/                  # 文档
 └── outputs/               # 训练输出产物（git 忽略）
@@ -29,7 +29,7 @@ TAAC_2026/
 ├── src/taac2026/domain/            # 配置、ExperimentSpec、FeatureSchema、BatchTensors
 ├── src/taac2026/application/       # 训练、评估、搜索、报告 CLI 与服务层
 ├── src/taac2026/infrastructure/    # 数据管道、TorchRec 适配器、共享 nn 组件、实验加载
-├── config/gen/                     # 10 个目录式实验包
+├── config/                         # 10 个目录式实验包
 ├── tests/                          # 单元 / 集成 / GPU 测试
 ├── docs/                           # 文档站点
 └── outputs/                        # 训练与评估产物（git 忽略）

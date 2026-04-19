@@ -70,4 +70,4 @@ def test_load_experiment_package_propagates_import_failures(tmp_path: Path) -> N
 
 def test_load_experiment_package_rejects_unknown_module_path() -> None:
     with pytest.raises(ModuleNotFoundError):
-        load_experiment_package("config.gen.this_package_does_not_exist")
+        load_experiment_package("config.this_package_does_not_exist")

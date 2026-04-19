@@ -7,16 +7,15 @@ from taac2026.domain.experiment import ExperimentSpec
 from taac2026.domain.features import build_default_feature_schema
 
 from .model import build_model_component
-from .utils import build_optimizer_component
 
 
-ROOT = Path(__file__).resolve().parents[3]
+ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_DATASET = ROOT / "data" / "datasets--TAAC2026--data_sample_1000"
-DEFAULT_OUTPUT_DIR = ROOT / "outputs" / "gen" / "unirec"
+DEFAULT_OUTPUT_DIR = ROOT / "outputs" / "config" / "interformer"
 
 
 EXPERIMENT = ExperimentSpec(
-	name="unirec",
+	name="interformer",
 	data=DataConfig(
 		dataset_path=str(DEFAULT_DATASET),
 		max_seq_len=32,
@@ -28,24 +27,24 @@ EXPERIMENT = ExperimentSpec(
 		dense_feature_dim=16,
 	),
 	model=ModelConfig(
-		name="unirec",
+		name="interformer",
 		vocab_size=131072,
 		embedding_dim=128,
 		hidden_dim=128,
 		dropout=0.1,
-		num_layers=4,
+		num_layers=3,
 		num_heads=4,
-		recent_seq_len=32,
-		memory_slots=2,
+		recent_seq_len=2,
+		memory_slots=4,
 		ffn_multiplier=4.0,
-		feature_cross_layers=1,
-		sequence_layers=1,
-		static_layers=3,
+		feature_cross_layers=0,
+		sequence_layers=0,
+		static_layers=0,
 		query_decoder_layers=0,
-		fusion_layers=1,
-		num_queries=0,
+		fusion_layers=0,
+		num_queries=2,
 		head_hidden_dim=256,
-		segment_count=8,
+		segment_count=4,
 		attention_dropout=0.1,
 	),
 	train=TrainConfig(
@@ -57,14 +56,14 @@ EXPERIMENT = ExperimentSpec(
 		output_dir=str(DEFAULT_OUTPUT_DIR),
 		learning_rate=1.0e-3,
 		weight_decay=1.0e-4,
-		pairwise_weight=0.25,
+		pairwise_weight=0.0,
 		latency_warmup_steps=2,
 		latency_measure_steps=8,
 	),
 	build_data_pipeline=None,
 	build_model_component=build_model_component,
 	build_loss_stack=None,
-	build_optimizer_component=build_optimizer_component,
+	build_optimizer_component=None,
 	switches={"logging": True, "visualization": True},
 )
 

@@ -9,9 +9,9 @@ from taac2026.domain.features import build_default_feature_schema
 from .model import build_model_component
 
 
-ROOT = Path(__file__).resolve().parents[3]
+ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_DATASET = ROOT / "data" / "datasets--TAAC2026--data_sample_1000"
-DEFAULT_OUTPUT_DIR = ROOT / "outputs" / "gen" / "ctr_baseline"
+DEFAULT_OUTPUT_DIR = ROOT / "outputs" / "config" / "ctr_baseline"
 
 
 EXPERIMENT = ExperimentSpec(

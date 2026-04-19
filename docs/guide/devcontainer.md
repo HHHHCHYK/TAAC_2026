@@ -71,7 +71,7 @@ uv run pytest -q
 uv run python scripts/run_gpu_tests.py
 
 # 训练 baseline
-uv run taac-train --experiment config/gen/baseline
+uv run taac-train --experiment config/baseline
 
 # 重新检查环境链路
 uv run python scripts/verify_gpu_env.py --json

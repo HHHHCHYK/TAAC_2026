@@ -13,4 +13,4 @@ site/
 docs/assets/figures/benchmarks/benchmark_acceptance.json
 
 # TAAC2026 Symbiosis
-config/gen/symbiosis/
+config/symbiosis/

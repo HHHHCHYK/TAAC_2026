@@ -9,13 +9,13 @@ from taac2026.domain.features import build_default_feature_schema
 from .model import build_model_component
 
 
-ROOT = Path(__file__).resolve().parents[3]
+ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_DATASET = ROOT / "data" / "datasets--TAAC2026--data_sample_1000"
-DEFAULT_OUTPUT_DIR = ROOT / "outputs" / "gen" / "hyformer"
+DEFAULT_OUTPUT_DIR = ROOT / "outputs" / "config" / "oo"
 
 
 EXPERIMENT = ExperimentSpec(
-	name="hyformer",
+	name="oo",
 	data=DataConfig(
 		dataset_path=str(DEFAULT_DATASET),
 		max_seq_len=32,
@@ -27,7 +27,7 @@ EXPERIMENT = ExperimentSpec(
 		dense_feature_dim=16,
 	),
 	model=ModelConfig(
-		name="hyformer",
+		name="oo",
 		vocab_size=131072,
 		embedding_dim=128,
 		hidden_dim=128,
@@ -42,9 +42,9 @@ EXPERIMENT = ExperimentSpec(
 		static_layers=0,
 		query_decoder_layers=0,
 		fusion_layers=0,
-		num_queries=1,
+		num_queries=0,
 		head_hidden_dim=256,
-		segment_count=13,
+		segment_count=0,
 		attention_dropout=0.1,
 	),
 	train=TrainConfig(

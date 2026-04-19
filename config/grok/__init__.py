@@ -9,13 +9,13 @@ from taac2026.domain.features import build_default_feature_schema
 from .model import build_model_component
 
 
-ROOT = Path(__file__).resolve().parents[3]
+ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_DATASET = ROOT / "data" / "datasets--TAAC2026--data_sample_1000"
-DEFAULT_OUTPUT_DIR = ROOT / "outputs" / "gen" / "deepcontextnet"
+DEFAULT_OUTPUT_DIR = ROOT / "outputs" / "config" / "grok"
 
 
 EXPERIMENT = ExperimentSpec(
-    name="deepcontextnet",
+    name="grok",
     data=DataConfig(
         dataset_path=str(DEFAULT_DATASET),
         max_seq_len=32,
@@ -27,16 +27,16 @@ EXPERIMENT = ExperimentSpec(
         dense_feature_dim=16,
     ),
     model=ModelConfig(
-        name="deepcontextnet",
+        name="grok",
         vocab_size=131072,
         embedding_dim=128,
         hidden_dim=128,
         dropout=0.1,
-        num_layers=4,
-        num_heads=8,
-        recent_seq_len=32,
+        num_layers=3,
+        num_heads=4,
+        recent_seq_len=16,
         memory_slots=0,
-        ffn_multiplier=4.0,
+        ffn_multiplier=3.0,
         feature_cross_layers=0,
         sequence_layers=0,
         static_layers=0,
@@ -44,19 +44,19 @@ EXPERIMENT = ExperimentSpec(
         fusion_layers=0,
         num_queries=1,
         head_hidden_dim=128,
-        segment_count=0,
-        attention_dropout=0.1,
+        segment_count=4,
+        attention_dropout=0.0,
     ),
     train=TrainConfig(
-        seed=42,
+        seed=7,
         epochs=10,
-        batch_size=32,
-        eval_batch_size=32,
+        batch_size=64,
+        eval_batch_size=64,
         num_workers=0,
         output_dir=str(DEFAULT_OUTPUT_DIR),
-        learning_rate=2.0e-4,
-        weight_decay=1.0e-5,
-        pairwise_weight=0.0,
+        learning_rate=3.0e-4,
+        weight_decay=1.0e-4,
+        pairwise_weight=0.15,
         latency_warmup_steps=2,
         latency_measure_steps=8,
     ),

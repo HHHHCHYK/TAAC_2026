@@ -25,7 +25,7 @@ def test_workspace(tmp_path: Path) -> TestWorkspace:
 
 def _build_unirec(test_workspace: TestWorkspace):
     """Load the UniRec experiment, build data pipeline + model, and return a batch."""
-    experiment = importlib.import_module("config.gen.unirec").EXPERIMENT
+    experiment = importlib.import_module("config.unirec").EXPERIMENT
     experiment = prepare_experiment(experiment, test_workspace)
     builders = resolve_experiment_builders(experiment)
     train_loader, _, data_stats = builders.build_data_pipeline(
@@ -91,7 +91,7 @@ def test_block_attn_res_partial_sum_matches_post_residual() -> None:
     the pre-residual ones.  When block_summaries is non-empty, the returned
     partial_sum must equal the sum of all post-residual last-tokens seen so far.
     """
-    from config.gen.unirec.model import BlockAttnRes
+    from config.unirec.model import BlockAttnRes
 
     dim = 16
     batch_size = 2

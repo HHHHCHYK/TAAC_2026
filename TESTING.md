@@ -63,7 +63,7 @@ uv run --with coverage coverage report
 | `application/training/`              | `test_profiling_unit.py` `test_profiling.py` `test_runtime_optimization.py` `test_training_recovery.py` |
 | `application/search/`                | `test_search_trial.py` `test_search_worker.py` `test_search_worker_integration.py` `test_search.py`     |
 | 数据读取 / batch 组装                | `test_data_pipeline.py` `test_runtime_integration.py`                                                   |
-| GEN 实验包 (`config/gen/`)           | `test_experiment_packages.py`                                                                           |
+| 实验包 (`config/`)                   | `test_experiment_packages.py`                                                                           |
 
 示例：
 

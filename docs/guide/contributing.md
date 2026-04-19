@@ -13,7 +13,7 @@ icon: lucide/git-branch-plus
 最小接入通常只需要两个文件：
 
 ```
-config/gen/my_experiment/
+config/my_experiment/
 ├── __init__.py    # 导出 EXPERIMENT
 └── model.py       # build_model_component（模型架构）
 ```
@@ -21,7 +21,7 @@ config/gen/my_experiment/
 当你需要覆盖默认行为时，再按需增加：
 
 ```
-config/gen/my_experiment/
+config/my_experiment/
 ├── __init__.py
 ├── model.py
 ├── data.py        # 仅在默认数据管道不够用时新增
@@ -41,9 +41,9 @@ from taac2026.domain.features import build_default_feature_schema
 
 from .model import build_model_component
 
-ROOT = Path(__file__).resolve().parents[3]
+ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_DATASET = ROOT / "data" / "datasets--TAAC2026--data_sample_1000"
-DEFAULT_OUTPUT_DIR = ROOT / "outputs" / "gen" / "my_experiment"
+DEFAULT_OUTPUT_DIR = ROOT / "outputs" / "config" / "my_experiment"
 
 EXPERIMENT = ExperimentSpec(
     name="my_experiment",
@@ -188,10 +188,10 @@ def build_data_pipeline(data_config, model_config, train_config):
 uv run pytest tests/test_experiment_packages.py -q
 
 # 2. 跑一次最小训练
-uv run taac-train --experiment config/gen/my_experiment
+uv run taac-train --experiment config/my_experiment
 
 # 3. 跑一次评估
-uv run taac-evaluate single --experiment config/gen/my_experiment
+uv run taac-evaluate single --experiment config/my_experiment
 ```
 
 如果你新增了测试文件，还必须把文件名登记到 `tests/conftest.py` 的 `UNIT_TEST_FILES`、`INTEGRATION_TEST_FILES` 或 `GPU_TEST_FILES` 集合里，否则 pytest 收集会直接失败。

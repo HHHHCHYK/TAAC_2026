@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 import torch
 
-from config.gen.baseline.data import DENSE_FEATURE_DIM, load_dataloaders
+from config.baseline.data import DENSE_FEATURE_DIM, load_dataloaders
 from taac2026.application.evaluation.cli import parse_args
 from taac2026.application.evaluation.service import _sort_records, evaluate_checkpoint
 from taac2026.domain.config import ModelConfig
@@ -201,17 +201,17 @@ def test_evaluate_checkpoint_rejects_quantized_export_combination(test_workspace
 @pytest.mark.parametrize(
     ("argv", "expected_command", "expected_value"),
     [
-        (["single", "--experiment", "config/gen/oo", "--run-dir", "outputs/example"], "single", "outputs/example"),
-        (["single", "--experiment", "config/gen/oo", "--compile", "--amp", "--amp-dtype", "bfloat16"], "single", None),
+        (["single", "--experiment", "config/oo", "--run-dir", "outputs/example"], "single", "outputs/example"),
+        (["single", "--experiment", "config/oo", "--compile", "--amp", "--amp-dtype", "bfloat16"], "single", None),
         (
             [
                 "batch",
                 "--experiment-paths",
-                "config/gen/baseline",
-                "config/gen/interformer",
+                "config/baseline",
+                "config/interformer",
             ],
             "batch",
-            ["config/gen/baseline", "config/gen/interformer"],
+            ["config/baseline", "config/interformer"],
         ),
     ],
 )
@@ -220,7 +220,7 @@ def test_parse_args_routes_subcommands(argv, expected_command, expected_value) -
 
     assert args.command == expected_command
     if expected_command == "single":
-        assert args.experiment == "config/gen/oo"
+        assert args.experiment == "config/oo"
         if expected_value is not None:
             assert args.run_dir == expected_value
     else:
@@ -231,7 +231,7 @@ def test_parse_args_accepts_runtime_optimization_flags() -> None:
     args = parse_args([
         "single",
         "--experiment",
-        "config/gen/oo",
+        "config/oo",
         "--quantize",
         "int8",
         "--export-mode",
@@ -262,8 +262,8 @@ def test_parse_args_accepts_batch_runtime_optimization_flags() -> None:
     args = parse_args([
         "batch",
         "--experiment-paths",
-        "config/gen/baseline",
-        "config/gen/interformer",
+        "config/baseline",
+        "config/interformer",
         "--quantize",
         "int8",
         "--export-mode",

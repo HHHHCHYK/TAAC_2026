@@ -39,12 +39,12 @@ uv run --no-project --isolated --with zensical zensical serve
 
 ## 常见操作
 
-| 操作 | 说明 |
-| --- | --- |
-| 新增页面 | 在 `docs/` 下创建 `.md` 文件，然后在 `zensical.toml` 的 `nav` 中添加条目 |
-| 修改导航 | 编辑 `zensical.toml` 中的 `nav` 数组 |
-| 自定义样式 | 编辑 `docs/assets/stylesheets/extra.css` |
-| 数学公式 | 使用 `$...$`（行内）或 `$$...$$`（块级），由 MathJax 渲染 |
+| 操作       | 说明                                                                     |
+| ---------- | ------------------------------------------------------------------------ |
+| 新增页面   | 在 `docs/` 下创建 `.md` 文件，然后在 `zensical.toml` 的 `nav` 中添加条目 |
+| 修改导航   | 编辑 `zensical.toml` 中的 `nav` 数组                                     |
+| 自定义样式 | 编辑 `docs/assets/stylesheets/extra.css`                                 |
+| 数学公式   | 使用 `$...$`（行内）或 `$$...$$`（块级），由 MathJax 渲染                |
 
 ## 故障排查
 

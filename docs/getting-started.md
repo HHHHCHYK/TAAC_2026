@@ -59,13 +59,13 @@ load_dataset('TAAC2026/data_sample_1000', cache_dir='data')
 ## 训练第一个模型
 
 ```bash
-uv run taac-train --experiment config/gen/baseline
+uv run taac-train --experiment config/baseline
 ```
 
-训练完成后，产物会写入 `outputs/gen/baseline/`：
+训练完成后，产物会写入 `outputs/config/baseline/`：
 
 ```
-outputs/gen/baseline/
+outputs/config/baseline/
 ├── best.pt                 # 最佳 checkpoint（按 val AUC 选择）
 ├── summary.json            # 训练摘要（指标、超参数、耗时）
 ├── training_curves.json    # 逐 epoch 训练曲线
@@ -75,23 +75,23 @@ outputs/gen/baseline/
 如果你希望提前打开编译与 AMP，可以直接使用同一套 CLI：
 
 ```bash
-uv run taac-train --experiment config/gen/baseline --compile --amp --amp-dtype bfloat16
+uv run taac-train --experiment config/baseline --compile --amp --amp-dtype bfloat16
 ```
 
 ## 评估
 
 ```bash
 # 评估默认输出目录中的 best.pt
-uv run taac-evaluate single --experiment config/gen/baseline
+uv run taac-evaluate single --experiment config/baseline
 
 # 启用 CPU int8 动态量化推理
-uv run taac-evaluate single --experiment config/gen/baseline --quantize int8
+uv run taac-evaluate single --experiment config/baseline --quantize int8
 
 # 导出当前评估图为 torch.export artifact
-uv run taac-evaluate single --experiment config/gen/baseline --export-mode torch-export
+uv run taac-evaluate single --experiment config/baseline --export-mode torch-export
 
 # 显式复用运行时优化配置
-uv run taac-evaluate single --experiment config/gen/baseline --compile --amp --amp-dtype bfloat16
+uv run taac-evaluate single --experiment config/baseline --compile --amp --amp-dtype bfloat16
 ```
 
 评估报告包含：AUC、PR-AUC、Brier Score、LogLoss、GAUC，以及推理延迟（ms/sample）。
@@ -104,7 +104,7 @@ uv run taac-evaluate single --experiment config/gen/baseline --compile --amp --a
 
 ```bash
 # 使用 Optuna 搜索 20 个 trial，自动按 GPU 显存并发调度
-uv run taac-search --experiment config/gen/baseline --trials 20
+uv run taac-search --experiment config/baseline --trials 20
 ```
 
 搜索默认约束：
@@ -120,13 +120,13 @@ uv run taac-search --experiment config/gen/baseline --trials 20
 
 ```bash
 # 训练 InterFormer
-uv run taac-train --experiment config/gen/interformer
+uv run taac-train --experiment config/interformer
 
 # 训练 OneTrans
-uv run taac-train --experiment config/gen/onetrans
+uv run taac-train --experiment config/onetrans
 
 # 训练 HyFormer
-uv run taac-train --experiment config/gen/hyformer
+uv run taac-train --experiment config/hyformer
 ```
 
 → 完整实验包列表见 [实验包总览](experiments/index.md)
