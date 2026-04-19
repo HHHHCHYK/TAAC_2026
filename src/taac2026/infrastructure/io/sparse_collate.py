@@ -6,11 +6,53 @@ from typing import TYPE_CHECKING, Mapping, Sequence
 
 import torch
 
+from ...domain.features import FeatureSchema
+
 if TYPE_CHECKING:
     from torchrec.sparse.jagged_tensor import KeyedJaggedTensor
 
 
 MaskedFeatureBatch = tuple[torch.Tensor, torch.Tensor]
+DEFAULT_SPARSE_FEATURE_NAMES = (
+    "user_tokens",
+    "context_tokens",
+    "candidate_tokens",
+    "candidate_post_tokens",
+    "candidate_author_tokens",
+)
+DEFAULT_SEQUENCE_FEATURE_NAMES = (
+    "history_tokens",
+    "history_post_tokens",
+    "history_author_tokens",
+    "history_action_tokens",
+    "history_time_gap",
+    "history_group_ids",
+)
+
+
+def default_feature_table_names(sequence_names: Sequence[str]) -> tuple[str, ...]:
+    return (
+        *DEFAULT_SPARSE_FEATURE_NAMES,
+        *DEFAULT_SEQUENCE_FEATURE_NAMES,
+        *(f"sequence:{sequence_name}" for sequence_name in sequence_names),
+    )
+
+
+def validate_default_feature_schema(feature_schema: FeatureSchema, sequence_names: Sequence[str]) -> None:
+    expected_names = set(default_feature_table_names(sequence_names))
+    actual_names = set(feature_schema.table_names)
+    missing_names = sorted(expected_names - actual_names)
+    unsupported_names = sorted(actual_names - expected_names)
+    if missing_names or unsupported_names:
+        problems: list[str] = []
+        if missing_names:
+            problems.append("missing=" + ", ".join(missing_names))
+        if unsupported_names:
+            problems.append("unsupported=" + ", ".join(unsupported_names))
+        raise ValueError(
+            "Default data pipeline only supports the canonical TorchRec feature schema "
+            + f"({'; '.join(problems)})"
+        )
 
 
 @lru_cache(maxsize=1)
@@ -61,6 +103,7 @@ def keyed_jagged_from_masked_batches(feature_batches: Mapping[str, MaskedFeature
 def build_batch_torchrec_features(
     sequence_names: Sequence[str],
     *,
+    feature_schema: FeatureSchema | None = None,
     user_tokens: torch.Tensor,
     user_mask: torch.Tensor,
     context_tokens: torch.Tensor,
@@ -88,14 +131,20 @@ def build_batch_torchrec_features(
     if int(sequence_tokens.shape[1]) != len(sequence_names):
         raise ValueError("sequence_names must align with sequence_tokens second dimension")
 
+    sparse_feature_batches = {
+        "user_tokens": (user_tokens, user_mask),
+        "context_tokens": (context_tokens, context_mask),
+        "candidate_tokens": (candidate_tokens, candidate_mask),
+        "candidate_post_tokens": (candidate_post_tokens, candidate_post_mask),
+        "candidate_author_tokens": (candidate_author_tokens, candidate_author_mask),
+    }
+    sparse_feature_names = DEFAULT_SPARSE_FEATURE_NAMES
+    if feature_schema is not None:
+        validate_default_feature_schema(feature_schema, sequence_names)
+        sparse_feature_names = tuple(name for name in feature_schema.table_names if name in sparse_feature_batches)
+
     sparse_features = keyed_jagged_from_masked_batches(
-        {
-            "user_tokens": (user_tokens, user_mask),
-            "context_tokens": (context_tokens, context_mask),
-            "candidate_tokens": (candidate_tokens, candidate_mask),
-            "candidate_post_tokens": (candidate_post_tokens, candidate_post_mask),
-            "candidate_author_tokens": (candidate_author_tokens, candidate_author_mask),
-        }
+        {name: sparse_feature_batches[name] for name in sparse_feature_names}
     )
 
     sequence_feature_batches: dict[str, MaskedFeatureBatch] = {
@@ -112,11 +161,19 @@ def build_batch_torchrec_features(
             sequence_mask[:, sequence_index, :],
         )
 
-    sequence_features = keyed_jagged_from_masked_batches(sequence_feature_batches)
+    sequence_feature_names = (*DEFAULT_SEQUENCE_FEATURE_NAMES, *(f"sequence:{sequence_name}" for sequence_name in sequence_names))
+    if feature_schema is not None:
+        sequence_feature_names = tuple(name for name in feature_schema.table_names if name in sequence_feature_batches)
+
+    sequence_features = keyed_jagged_from_masked_batches(
+        {name: sequence_feature_batches[name] for name in sequence_feature_names}
+    )
     return sparse_features, sequence_features
 
 
 __all__ = [
     "build_batch_torchrec_features",
+    "default_feature_table_names",
     "keyed_jagged_from_masked_batches",
+    "validate_default_feature_schema",
 ]

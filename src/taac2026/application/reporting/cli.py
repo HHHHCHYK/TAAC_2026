@@ -9,7 +9,7 @@ from ...reporting.model_performance_plot import plot_model_performance
 ROOT = Path(__file__).resolve().parents[4]
 DEFAULT_SUMMARY_ROOT = ROOT / "outputs" / "smoke"
 DEFAULT_SEARCH_ROOT = ROOT / "outputs" / "config"
-DEFAULT_EXPERIMENTS_DOC_PATH = ROOT / "docs" / "experiments.md"
+DEFAULT_EXPERIMENTS_DOC_PATH = ROOT / "docs" / "experiments" / "index.md"
 DEFAULT_OUTPUT_PATHS = {
     "size": ROOT / "figures" / "model_performance_vs_size.png",
     "compute": ROOT / "figures" / "model_performance_vs_compute.png",
@@ -31,7 +31,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--experiments-doc",
         default=str(DEFAULT_EXPERIMENTS_DOC_PATH),
-        help="Fallback markdown file used when summary.json artifacts are unavailable",
+        help="Optional markdown performance snapshot used when summary.json artifacts are unavailable",
     )
     parser.add_argument(
         "--x-metric",

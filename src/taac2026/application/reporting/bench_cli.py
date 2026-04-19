@@ -52,6 +52,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default=None,
         help="Optional phase name compared against the baseline in the acceptance summary",
     )
+    parser.add_argument(
+        "--fail-on-empty",
+        action="store_true",
+        help="Exit with an error when no benchmark records are available instead of writing placeholder charts",
+    )
     return parser.parse_args(argv)
 
 
@@ -64,6 +69,10 @@ def main(argv: list[str] | None = None) -> int:
         performance_dir=args.performance_dir,
         default_label=args.label,
     )
+    if args.fail_on_empty and not records:
+        raise FileNotFoundError(
+            "No benchmark records were found in the provided pytest-benchmark inputs or performance directory"
+        )
     written = write_benchmark_charts(output_dir=output_dir, records=records)
     summary_path = write_benchmark_summary(
         args.summary_path,

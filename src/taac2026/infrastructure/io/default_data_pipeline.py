@@ -10,10 +10,11 @@ import torch
 from torch.utils.data import DataLoader, Dataset
 
 from ...domain.config import DataConfig
+from ...domain.features import FeatureSchema
 from ...domain.types import BatchTensors, DataStats
 from .datasets import iter_dataset_rows
 from .files import stable_hash64
-from .sparse_collate import build_batch_torchrec_features
+from .sparse_collate import build_batch_torchrec_features, validate_default_feature_schema
 
 
 DENSE_FEATURE_DIM = 16
@@ -81,6 +82,90 @@ class _EncodedDataset(Dataset[_EncodedSample]):
 
 	def __getitem__(self, index: int) -> _EncodedSample:
 		return self._samples[index]
+
+
+@dataclass(frozen=True, slots=True)
+class _PipelineSchema:
+	table_lengths: dict[str, int]
+	table_vocab_sizes: dict[str, int]
+	sequence_names: tuple[str, ...]
+	history_capacity: int
+	sequence_length: int
+
+
+_HISTORY_FEATURE_TABLE_NAMES = (
+	"history_tokens",
+	"history_post_tokens",
+	"history_author_tokens",
+	"history_action_tokens",
+	"history_time_gap",
+	"history_group_ids",
+)
+
+
+def _expected_table_lengths(config: DataConfig) -> dict[str, int]:
+	sequence_names = tuple(config.sequence_names)
+	history_capacity = max(1, len(sequence_names)) * int(config.max_seq_len)
+	table_lengths = {
+		"user_tokens": int(config.max_feature_tokens),
+		"context_tokens": int(config.max_feature_tokens),
+		"candidate_tokens": 1,
+		"candidate_post_tokens": max(1, int(config.max_event_features)),
+		"candidate_author_tokens": AUTHOR_TOKEN_COUNT,
+		"history_tokens": history_capacity,
+		"history_post_tokens": history_capacity,
+		"history_author_tokens": history_capacity,
+		"history_action_tokens": history_capacity,
+		"history_time_gap": history_capacity,
+		"history_group_ids": history_capacity,
+	}
+	for sequence_name in sequence_names:
+		table_lengths[f"sequence:{sequence_name}"] = int(config.max_seq_len)
+	return table_lengths
+
+
+def _resolve_table_vocab_size(feature_schema: FeatureSchema | None, name: str, fallback: int) -> int:
+	if feature_schema is None:
+		return max(2, int(fallback))
+	return max(2, int(feature_schema.table(name).num_embeddings))
+
+
+def _validate_table_lengths(feature_schema: FeatureSchema, expected_lengths: dict[str, int]) -> None:
+	mismatches: list[str] = []
+	for name, expected_length in expected_lengths.items():
+		actual_length = feature_schema.table(name).max_length
+		if actual_length is None:
+			continue
+		if int(actual_length) != expected_length:
+			mismatches.append(f"{name}={actual_length} (expected {expected_length})")
+	if mismatches:
+		raise ValueError(
+			"Default data pipeline requires canonical max_length values "
+			+ f"({'; '.join(mismatches)})"
+		)
+
+
+def _resolve_pipeline_schema(
+	config: DataConfig,
+	vocab_size: int,
+	feature_schema: FeatureSchema | None,
+) -> _PipelineSchema:
+	sequence_names = tuple(config.sequence_names)
+	table_lengths = _expected_table_lengths(config)
+	if feature_schema is not None:
+		validate_default_feature_schema(feature_schema, sequence_names)
+		_validate_table_lengths(feature_schema, table_lengths)
+	table_vocab_sizes = {
+		name: _resolve_table_vocab_size(feature_schema, name, vocab_size)
+		for name in table_lengths
+	}
+	return _PipelineSchema(
+		table_lengths=table_lengths,
+		table_vocab_sizes=table_vocab_sizes,
+		sequence_names=sequence_names,
+		history_capacity=table_lengths["history_tokens"],
+		sequence_length=int(config.max_seq_len),
+	)
 
 
 def _sort_rows_by_timestamp(rows: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -308,11 +393,19 @@ def _role_token_array(
 	return tokens, mask
 
 
-def _user_tokens_from_row(row: dict[str, Any], config: DataConfig, vocab_size: int) -> tuple[np.ndarray, np.ndarray]:
+def _user_tokens_from_row(
+	row: dict[str, Any],
+	pipeline_schema: _PipelineSchema,
+) -> tuple[np.ndarray, np.ndarray]:
 	signatures = [f"user_id|{row.get('user_id', '0')}"]
 	for fid, value in _iter_int_features(row, "user_int_feats_"):
 		signatures.append(_flat_feature_signature("user", fid, value))
-	return _role_token_array(signatures, config.max_feature_tokens, "user", vocab_size)
+	return _role_token_array(
+		signatures,
+		pipeline_schema.table_lengths["user_tokens"],
+		"user",
+		pipeline_schema.table_vocab_sizes["user_tokens"],
+	)
 
 
 def _dense_features_from_row(row: dict[str, Any], config: DataConfig) -> np.ndarray:
@@ -333,29 +426,38 @@ def _dense_features_from_row(row: dict[str, Any], config: DataConfig) -> np.ndar
 	return dense
 
 
-def _context_tokens_from_row(row: dict[str, Any], config: DataConfig, vocab_size: int) -> tuple[np.ndarray, np.ndarray]:
+def _context_tokens_from_row(
+	row: dict[str, Any],
+	pipeline_schema: _PipelineSchema,
+) -> tuple[np.ndarray, np.ndarray]:
 	timestamp = int(row.get("timestamp", 0) or 0)
 	hour_bucket = (timestamp // 3600) % 24
 	signatures = [f"request_hour|{hour_bucket}"]
 	for fid, value in _iter_int_features(row, "item_int_feats_"):
 		signatures.append(_flat_feature_signature("context", fid, value))
-	return _role_token_array(signatures, config.max_feature_tokens, "context", vocab_size)
+	return _role_token_array(
+		signatures,
+		pipeline_schema.table_lengths["context_tokens"],
+		"context",
+		pipeline_schema.table_vocab_sizes["context_tokens"],
+	)
 
 
 def _candidate_tokens_from_row(
 	row: dict[str, Any],
-	config: DataConfig,
-	vocab_size: int,
+	pipeline_schema: _PipelineSchema,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
 	item_features = list(_iter_int_features(row, "item_int_feats_"))
 	post_signatures = [f"item_id|{row.get('item_id', 0)}"]
-	for fid, value in item_features[: max(0, config.max_event_features - 1)]:
+	post_capacity = pipeline_schema.table_lengths["candidate_post_tokens"]
+	author_capacity = pipeline_schema.table_lengths["candidate_author_tokens"]
+	for fid, value in item_features[: max(0, post_capacity - 1)]:
 		post_signatures.append(_flat_feature_signature("item_post", fid, value))
 	candidate_post_tokens, candidate_post_mask = _role_token_array(
 		post_signatures,
-		max(1, config.max_event_features),
+		post_capacity,
 		"candidate_post",
-		vocab_size,
+		pipeline_schema.table_vocab_sizes["candidate_post_tokens"],
 	)
 
 	ranked_features = sorted(
@@ -363,18 +465,23 @@ def _candidate_tokens_from_row(
 		key=lambda pair: (abs(_flat_numeric_value(pair[1])), pair[0]),
 		reverse=True,
 	)
-	author_signatures = [_flat_feature_signature("item_author", fid, value) for fid, value in ranked_features[:AUTHOR_TOKEN_COUNT]]
+	author_signatures = [_flat_feature_signature("item_author", fid, value) for fid, value in ranked_features[:author_capacity]]
 	if not author_signatures:
 		author_signatures = [f"item_author|missing|{row.get('item_id', 0)}"]
 	candidate_author_tokens, candidate_author_mask = _role_token_array(
 		author_signatures,
-		AUTHOR_TOKEN_COUNT,
+		author_capacity,
 		"candidate_author",
-		vocab_size,
+		pipeline_schema.table_vocab_sizes["candidate_author_tokens"],
 	)
 
 	composite_signature = "|".join([f"item_id|{row.get('item_id', 0)}", *post_signatures[1:], *author_signatures])
-	candidate_tokens, candidate_mask = _role_token_array([composite_signature], 1, "candidate", vocab_size)
+	candidate_tokens, candidate_mask = _role_token_array(
+		[composite_signature],
+		pipeline_schema.table_lengths["candidate_tokens"],
+		"candidate",
+		pipeline_schema.table_vocab_sizes["candidate_tokens"],
+	)
 	return (
 		candidate_tokens,
 		candidate_mask,
@@ -389,12 +496,12 @@ def _sequence_events_from_arrays(
 	sequence_name: str,
 	sequence_index: int,
 	arrays: dict[int, list[int]],
-	config: DataConfig,
-	vocab_size: int,
+	pipeline_schema: _PipelineSchema,
 	reference_timestamp: int,
 ) -> tuple[list[_SequenceEvent], np.ndarray, np.ndarray]:
-	sequence_tokens = np.zeros(config.max_seq_len, dtype=np.int64)
-	sequence_mask = np.zeros(config.max_seq_len, dtype=np.bool_)
+	sequence_length = pipeline_schema.sequence_length
+	sequence_tokens = np.zeros(sequence_length, dtype=np.int64)
+	sequence_mask = np.zeros(sequence_length, dtype=np.bool_)
 	if not arrays:
 		return [], sequence_tokens, sequence_mask
 
@@ -421,7 +528,8 @@ def _sequence_events_from_arrays(
 		return [], sequence_tokens, sequence_mask
 
 	event_count = len(primary_values)
-	start_index = max(0, event_count - config.max_seq_len)
+	start_index = max(0, event_count - sequence_length)
+	sequence_vocab_size = pipeline_schema.table_vocab_sizes[f"sequence:{sequence_name}"]
 	events: list[_SequenceEvent] = []
 	for output_index, source_index in enumerate(range(start_index, event_count)):
 		post_value = _value_at(arrays.get(post_feature_id) if post_feature_id is not None else None, source_index, 0) or 0
@@ -447,7 +555,7 @@ def _sequence_events_from_arrays(
 		author_signature = f"{sequence_name}|author={'|'.join(author_parts)}"
 		action_signature = f"{sequence_name}|action={'|'.join(action_parts)}"
 		composite_signature = f"{post_signature}|{author_signature}|{action_signature}|gap={gap_bucket}"
-		sequence_tokens[output_index] = _token_id(f"sequence|{post_signature}", vocab_size)
+		sequence_tokens[output_index] = _token_id(f"sequence|{post_signature}", sequence_vocab_size)
 		sequence_mask[output_index] = True
 		events.append(
 			_SequenceEvent(
@@ -465,13 +573,13 @@ def _sequence_events_from_arrays(
 
 def _history_and_sequence_tokens_from_row(
 	row: dict[str, Any],
-	config: DataConfig,
-	vocab_size: int,
+	pipeline_schema: _PipelineSchema,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
-	sequence_count = len(config.sequence_names)
-	history_capacity = sequence_count * config.max_seq_len
-	sequence_tokens = np.zeros((sequence_count, config.max_seq_len), dtype=np.int64)
-	sequence_mask = np.zeros((sequence_count, config.max_seq_len), dtype=np.bool_)
+	sequence_count = len(pipeline_schema.sequence_names)
+	history_capacity = pipeline_schema.history_capacity
+	sequence_length = pipeline_schema.sequence_length
+	sequence_tokens = np.zeros((sequence_count, sequence_length), dtype=np.int64)
+	sequence_mask = np.zeros((sequence_count, sequence_length), dtype=np.bool_)
 	history_tokens = np.zeros(history_capacity, dtype=np.int64)
 	history_mask = np.zeros(history_capacity, dtype=np.bool_)
 	history_post_tokens = np.zeros(history_capacity, dtype=np.int64)
@@ -481,15 +589,16 @@ def _history_and_sequence_tokens_from_row(
 	history_group_ids = np.zeros(history_capacity, dtype=np.int64)
 	reference_timestamp = int(row.get("timestamp", 0) or 0)
 	merged_events: list[_SequenceEvent] = []
+	history_time_gap_vocab_size = pipeline_schema.table_vocab_sizes["history_time_gap"]
+	history_group_vocab_size = pipeline_schema.table_vocab_sizes["history_group_ids"]
 
-	for sequence_index, sequence_name in enumerate(config.sequence_names):
+	for sequence_index, sequence_name in enumerate(pipeline_schema.sequence_names):
 		arrays = _sequence_feature_arrays_from_row(row, sequence_name)
 		events, sequence_row_tokens, sequence_row_mask = _sequence_events_from_arrays(
 			sequence_name=sequence_name,
 			sequence_index=sequence_index,
 			arrays=arrays,
-			config=config,
-			vocab_size=vocab_size,
+			pipeline_schema=pipeline_schema,
 			reference_timestamp=reference_timestamp,
 		)
 		sequence_tokens[sequence_index] = sequence_row_tokens
@@ -499,12 +608,24 @@ def _history_and_sequence_tokens_from_row(
 	merged_events.sort(key=lambda event: (event.timestamp if event.timestamp is not None else -1, event.sequence_index))
 	trimmed_events = merged_events[-history_capacity:]
 	for history_slot, event in enumerate(trimmed_events):
-		history_tokens[history_slot] = _token_id(f"history|{event.composite_signature}", vocab_size)
-		history_post_tokens[history_slot] = _token_id(f"history_post|{event.post_signature}", vocab_size)
-		history_author_tokens[history_slot] = _token_id(f"history_author|{event.author_signature}", vocab_size)
-		history_action_tokens[history_slot] = _token_id(f"history_action|{event.action_signature}", vocab_size)
-		history_time_gap[history_slot] = event.gap_bucket + 1
-		history_group_ids[history_slot] = event.sequence_index + 1
+		history_tokens[history_slot] = _token_id(
+			f"history|{event.composite_signature}",
+			pipeline_schema.table_vocab_sizes["history_tokens"],
+		)
+		history_post_tokens[history_slot] = _token_id(
+			f"history_post|{event.post_signature}",
+			pipeline_schema.table_vocab_sizes["history_post_tokens"],
+		)
+		history_author_tokens[history_slot] = _token_id(
+			f"history_author|{event.author_signature}",
+			pipeline_schema.table_vocab_sizes["history_author_tokens"],
+		)
+		history_action_tokens[history_slot] = _token_id(
+			f"history_action|{event.action_signature}",
+			pipeline_schema.table_vocab_sizes["history_action_tokens"],
+		)
+		history_time_gap[history_slot] = min(event.gap_bucket + 1, history_time_gap_vocab_size - 1)
+		history_group_ids[history_slot] = min(event.sequence_index + 1, history_group_vocab_size - 1)
 		history_mask[history_slot] = True
 
 	return (
@@ -523,11 +644,11 @@ def _history_and_sequence_tokens_from_row(
 def _encode_row(
 	row: dict[str, Any],
 	config: DataConfig,
-	vocab_size: int,
+	pipeline_schema: _PipelineSchema,
 	item_logq_lookup: dict[int, float],
 	default_item_logq: float,
 ) -> _EncodedSample:
-	user_tokens, user_mask = _user_tokens_from_row(row, config, vocab_size)
+	user_tokens, user_mask = _user_tokens_from_row(row, pipeline_schema)
 	(
 		candidate_tokens,
 		candidate_mask,
@@ -535,8 +656,8 @@ def _encode_row(
 		candidate_post_mask,
 		candidate_author_tokens,
 		candidate_author_mask,
-	) = _candidate_tokens_from_row(row, config, vocab_size)
-	context_tokens, context_mask = _context_tokens_from_row(row, config, vocab_size)
+	) = _candidate_tokens_from_row(row, pipeline_schema)
+	context_tokens, context_mask = _context_tokens_from_row(row, pipeline_schema)
 	(
 		history_tokens,
 		history_mask,
@@ -549,8 +670,7 @@ def _encode_row(
 		sequence_mask,
 	) = _history_and_sequence_tokens_from_row(
 		row,
-		config,
-		vocab_size,
+		pipeline_schema,
 	)
 	dense_features = _dense_features_from_row(row, config)
 	label_type = int(row.get("label_type", 0) or 0)
@@ -599,7 +719,11 @@ def _build_item_logq_lookup(train_rows: list[dict[str, Any]]) -> tuple[dict[int,
 
 
 
-def _collate_batch(samples: list[_EncodedSample], sequence_names: tuple[str, ...]) -> BatchTensors:
+def _collate_batch(
+	samples: list[_EncodedSample],
+	sequence_names: tuple[str, ...],
+	feature_schema: FeatureSchema | None = None,
+) -> BatchTensors:
 	candidate_tokens = torch.as_tensor(np.stack([sample.candidate_tokens for sample in samples]), dtype=torch.long)
 	candidate_mask = torch.as_tensor(np.stack([sample.candidate_mask for sample in samples]), dtype=torch.bool)
 	context_tokens = torch.as_tensor(np.stack([sample.context_tokens for sample in samples]), dtype=torch.long)
@@ -626,6 +750,7 @@ def _collate_batch(samples: list[_EncodedSample], sequence_names: tuple[str, ...
 	history_group_ids = torch.as_tensor(np.stack([sample.history_group_ids for sample in samples]), dtype=torch.long)
 	sparse_features, sequence_features = build_batch_torchrec_features(
 		sequence_names=sequence_names,
+		feature_schema=feature_schema,
 		user_tokens=user_tokens,
 		user_mask=user_mask,
 		context_tokens=context_tokens,
@@ -664,18 +789,20 @@ def load_dataloaders(
 	eval_batch_size: int,
 	num_workers: int,
 	seed: int,
+	feature_schema: FeatureSchema | None = None,
 ) -> tuple[DataLoader[BatchTensors], DataLoader[BatchTensors], DataStats]:
 	del seed
+	pipeline_schema = _resolve_pipeline_schema(config, vocab_size, feature_schema)
 	sorted_rows = _sort_rows_by_timestamp(iter_dataset_rows(config.dataset_path))
 	train_rows, val_rows = _time_split(sorted_rows, config.val_ratio)
 	item_logq_lookup, default_item_logq = _build_item_logq_lookup(train_rows)
 
 	train_samples = [
-		_encode_row(row, config, vocab_size, item_logq_lookup, default_item_logq)
+		_encode_row(row, config, pipeline_schema, item_logq_lookup, default_item_logq)
 		for row in train_rows
 	]
 	val_samples = [
-		_encode_row(row, config, vocab_size, item_logq_lookup, default_item_logq)
+		_encode_row(row, config, pipeline_schema, item_logq_lookup, default_item_logq)
 		for row in val_rows
 	]
 
@@ -689,7 +816,11 @@ def load_dataloaders(
 		train_size=len(train_samples),
 		val_size=len(val_samples),
 	)
-	collate_batch = partial(_collate_batch, sequence_names=tuple(config.sequence_names))
+	collate_batch = partial(
+		_collate_batch,
+		sequence_names=pipeline_schema.sequence_names,
+		feature_schema=feature_schema,
+	)
 
 	train_loader = DataLoader(
 		_EncodedDataset(train_samples),
@@ -708,7 +839,7 @@ def load_dataloaders(
 	return train_loader, val_loader, stats
 
 
-def build_data_pipeline(data_config, model_config, train_config):
+def build_data_pipeline(data_config, model_config, train_config, feature_schema: FeatureSchema | None = None):
 	return load_dataloaders(
 		config=data_config,
 		vocab_size=model_config.vocab_size,
@@ -716,6 +847,7 @@ def build_data_pipeline(data_config, model_config, train_config):
 		eval_batch_size=train_config.resolved_eval_batch_size,
 		num_workers=train_config.num_workers,
 		seed=train_config.seed,
+		feature_schema=feature_schema,
 	)
 
 

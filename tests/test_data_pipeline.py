@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 import math
 from pathlib import Path
 
@@ -7,6 +8,8 @@ import pytest
 import torch
 
 from config.baseline.data import DENSE_FEATURE_DIM, load_dataloaders
+from taac2026.domain.config import ModelConfig
+from taac2026.domain.features import FeatureTableSpec, build_default_feature_schema
 from taac2026.infrastructure.io.files import stable_hash64
 from tests.support import TestWorkspace, build_edge_case_rows, create_test_workspace
 
@@ -215,3 +218,115 @@ def test_streaming_pipeline_handles_sparse_and_truncated_sequences(tmp_path: Pat
         int(_dense_sequence_tokens(_sequence_by_key(batch), "history_group_ids", history_capacity)[0].max().item())
         for batch in batches
     ) <= len(sequence_names)
+
+
+def test_streaming_pipeline_uses_feature_schema_vocab_sizes(test_workspace: TestWorkspace) -> None:
+    model_config = ModelConfig(name="test_pipeline", **test_workspace.model_kwargs)
+    feature_schema = build_default_feature_schema(test_workspace.data_config, model_config)
+    custom_vocab_sizes = {
+        "user_tokens": 17,
+        "context_tokens": 19,
+        "candidate_tokens": 23,
+        "candidate_post_tokens": 29,
+        "candidate_author_tokens": 31,
+        "history_tokens": 37,
+        "history_post_tokens": 41,
+        "history_author_tokens": 43,
+        "history_action_tokens": 47,
+        "history_time_gap": 8,
+        "history_group_ids": 3,
+        **{f"sequence:{name}": 53 + index * 2 for index, name in enumerate(test_workspace.data_config.sequence_names)},
+    }
+    feature_schema = replace(
+        feature_schema,
+        auto_sync=False,
+        tables=tuple(
+            replace(table, num_embeddings=custom_vocab_sizes.get(table.name, table.num_embeddings))
+            for table in feature_schema.tables
+        ),
+    )
+
+    train_loader, _, _ = load_dataloaders(
+        config=test_workspace.data_config,
+        vocab_size=model_config.vocab_size,
+        batch_size=2,
+        eval_batch_size=2,
+        num_workers=0,
+        seed=7,
+        feature_schema=feature_schema,
+    )
+    batch = next(iter(train_loader))
+    sparse_by_key = batch.sparse_features.to_dict()
+    sequence_by_key = _sequence_by_key(batch)
+
+    assert int(sparse_by_key["user_tokens"].values().max().item()) < custom_vocab_sizes["user_tokens"]
+    assert int(sparse_by_key["context_tokens"].values().max().item()) < custom_vocab_sizes["context_tokens"]
+    assert int(sparse_by_key["candidate_tokens"].values().max().item()) < custom_vocab_sizes["candidate_tokens"]
+    assert int(sparse_by_key["candidate_post_tokens"].values().max().item()) < custom_vocab_sizes["candidate_post_tokens"]
+    assert int(sparse_by_key["candidate_author_tokens"].values().max().item()) < custom_vocab_sizes["candidate_author_tokens"]
+    assert int(sequence_by_key["history_tokens"].values().max().item()) < custom_vocab_sizes["history_tokens"]
+    assert int(sequence_by_key["history_post_tokens"].values().max().item()) < custom_vocab_sizes["history_post_tokens"]
+    assert int(sequence_by_key["history_author_tokens"].values().max().item()) < custom_vocab_sizes["history_author_tokens"]
+    assert int(sequence_by_key["history_action_tokens"].values().max().item()) < custom_vocab_sizes["history_action_tokens"]
+    assert int(sequence_by_key["history_time_gap"].values().max().item()) < custom_vocab_sizes["history_time_gap"]
+    assert int(sequence_by_key["history_group_ids"].values().max().item()) < custom_vocab_sizes["history_group_ids"]
+    for sequence_name in test_workspace.data_config.sequence_names:
+        sequence_key = f"sequence:{sequence_name}"
+        assert int(sequence_by_key[sequence_key].values().max().item()) < custom_vocab_sizes[sequence_key]
+
+
+def test_streaming_pipeline_rejects_noncanonical_schema_lengths(test_workspace: TestWorkspace) -> None:
+    model_config = ModelConfig(name="test_pipeline", **test_workspace.model_kwargs)
+    feature_schema = build_default_feature_schema(test_workspace.data_config, model_config)
+    feature_schema = replace(
+        feature_schema,
+        auto_sync=False,
+        tables=tuple(
+            replace(table, max_length=table.max_length + 1)
+            if table.name == "user_tokens" and table.max_length is not None
+            else table
+            for table in feature_schema.tables
+        ),
+    )
+
+    with pytest.raises(ValueError, match="canonical max_length values"):
+        load_dataloaders(
+            config=test_workspace.data_config,
+            vocab_size=model_config.vocab_size,
+            batch_size=2,
+            eval_batch_size=2,
+            num_workers=0,
+            seed=7,
+            feature_schema=feature_schema,
+        )
+
+
+def test_streaming_pipeline_rejects_unsupported_feature_schema_tables(test_workspace: TestWorkspace) -> None:
+    model_config = ModelConfig(name="test_pipeline", **test_workspace.model_kwargs)
+    feature_schema = build_default_feature_schema(test_workspace.data_config, model_config)
+    feature_schema = replace(
+        feature_schema,
+        auto_sync=False,
+        tables=feature_schema.tables
+        + (
+            FeatureTableSpec(
+                name="bonus_tokens",
+                family="bonus",
+                num_embeddings=11,
+                embedding_dim=model_config.embedding_dim,
+                pooling_type="mean",
+                max_length=1,
+            ),
+        ),
+    )
+
+    with pytest.raises(ValueError, match="canonical TorchRec feature schema"):
+        load_dataloaders(
+            config=test_workspace.data_config,
+            vocab_size=model_config.vocab_size,
+            batch_size=2,
+            eval_batch_size=2,
+            num_workers=0,
+            seed=7,
+            feature_schema=feature_schema,
+        )

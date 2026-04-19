@@ -49,6 +49,7 @@ def test_parse_args_accepts_benchmark_inputs() -> None:
         "baseline",
         "--candidate-phase",
         "phase-1",
+        "--fail-on-empty",
     ])
 
     assert args.input == ["benchmark-result.json", "other.json"]
@@ -58,6 +59,7 @@ def test_parse_args_accepts_benchmark_inputs() -> None:
     assert args.label == "phase-0"
     assert args.baseline_phase == "baseline"
     assert args.candidate_phase == "phase-1"
+    assert args.fail_on_empty is True
 
 
 def test_load_pytest_benchmark_file_parses_stats(tmp_path: Path) -> None:
@@ -176,3 +178,21 @@ def test_bench_cli_writes_placeholder_charts_without_input(tmp_path: Path) -> No
     assert placeholder["series"] == []
     summary = json.loads(summary_path.read_text(encoding="utf-8"))
     assert summary["acceptance"]["int8_quantization_record_present"]["status"] == "missing"
+
+
+def test_bench_cli_can_fail_when_no_benchmark_records_are_available(tmp_path: Path) -> None:
+    performance_dir = tmp_path / "performance"
+    output_dir = tmp_path / "charts"
+    summary_path = tmp_path / "charts" / "benchmark_acceptance.json"
+    performance_dir.mkdir(parents=True)
+
+    with pytest.raises(FileNotFoundError, match="No benchmark records were found"):
+        main([
+            "--performance-dir",
+            str(performance_dir),
+            "--output-dir",
+            str(output_dir),
+            "--summary-path",
+            str(summary_path),
+            "--fail-on-empty",
+        ])

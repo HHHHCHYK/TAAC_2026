@@ -99,40 +99,58 @@ def _parse_experiments_doc(doc_path: Path) -> dict[str, ModelPoint]:
         return {}
 
     lines = doc_path.read_text(encoding="utf-8").splitlines()
-    try:
-        section_index = lines.index("## 当前可复核 smoke 结果")
-    except ValueError:
+    table_lines: list[str] = []
+    for line in lines:
+        if line.startswith("|"):
+            table_lines.append(line)
+            continue
+        if table_lines:
+            points = _parse_experiments_doc_table(table_lines)
+            if points:
+                return points
+            table_lines = []
+
+    if table_lines:
+        return _parse_experiments_doc_table(table_lines)
+    return {}
+
+
+def _parse_experiments_doc_table(table_lines: list[str]) -> dict[str, ModelPoint]:
+    if len(table_lines) < 3:
         return {}
 
-    table_lines: list[str] = []
-    for line in lines[section_index + 1 :]:
-        if not line.strip():
-            if table_lines:
-                break
-            continue
-        if not line.startswith("|"):
-            if table_lines:
-                break
-            continue
-        table_lines.append(line)
+    headers = [cell.strip() for cell in table_lines[0].strip().strip("|").split("|")]
+    try:
+        experiment_index = headers.index("实验包")
+        auc_index = headers.index("AUC")
+        tflops_index = headers.index("TFLOPs")
+        size_index = headers.index("模型大小(MB)")
+    except ValueError:
+        return {}
 
     points: dict[str, ModelPoint] = {}
     for row in table_lines[2:]:
         cells = [cell.strip() for cell in row.strip().strip("|").split("|")]
-        if len(cells) < 11:
+        required_index = max(experiment_index, auc_index, tflops_index, size_index)
+        if len(cells) <= required_index:
             continue
-        experiment_name = cells[0]
+        experiment_name = cells[experiment_index]
         slug = DOC_SLUGS.get(experiment_name)
         if slug is None:
             continue
-        parameter_size_mb = float(cells[10])
+        try:
+            parameter_size_mb = float(cells[size_index])
+            auc = float(cells[auc_index])
+            total_tflops = float(cells[tflops_index])
+        except ValueError:
+            continue
         points[slug] = ModelPoint(
             slug=slug,
             label=DISPLAY_NAMES[slug],
-            auc=float(cells[3]),
+            auc=auc,
             params_million=parameter_size_mb * 1024.0 * 1024.0 / 4.0e6,
             parameter_size_mb=parameter_size_mb,
-            total_tflops=float(cells[9]),
+            total_tflops=total_tflops,
             source="docs",
         )
     return points
@@ -160,10 +178,15 @@ def load_base_points(summary_root: Path, experiments_doc_path: Path) -> list[Mod
             points.append(doc_points[slug])
             continue
         missing.append(str(summary_path))
+    if points:
+        return points
     if missing:
         missing_block = "\n".join(missing)
-        raise FileNotFoundError(f"Missing summary files and no docs fallback available:\n{missing_block}")
-    return points
+        raise FileNotFoundError(
+            "Missing summary files and no markdown performance snapshot was available:\n"
+            f"{missing_block}"
+        )
+    raise FileNotFoundError("No summary.json artifacts or markdown performance snapshot were available")
 
 
 def load_search_series(search_root: Path) -> dict[str, SearchSeries]:

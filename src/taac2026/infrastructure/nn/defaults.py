@@ -49,7 +49,6 @@ def default_build_data_pipeline(
     model_config,
     train_config,
 ):
-    del feature_schema
     return load_dataloaders(
         config=data_config,
         vocab_size=model_config.vocab_size,
@@ -57,6 +56,7 @@ def default_build_data_pipeline(
         eval_batch_size=train_config.resolved_eval_batch_size,
         num_workers=train_config.num_workers,
         seed=train_config.seed,
+        feature_schema=feature_schema,
     )
 
 

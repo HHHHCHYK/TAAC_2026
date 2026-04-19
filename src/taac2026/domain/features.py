@@ -39,6 +39,8 @@ def build_default_feature_schema(data_config: DataConfig, model_config: ModelCon
     vocab_size = max(int(model_config.vocab_size), 2)
     embedding_dim = int(model_config.embedding_dim)
     sequence_names = tuple(data_config.sequence_names)
+    history_capacity = max(1, len(sequence_names)) * int(data_config.max_seq_len)
+    candidate_event_capacity = max(1, int(data_config.max_event_features))
     sequence_table_specs = tuple(
         FeatureTableSpec(
             name=f"sequence:{sequence_name}",
@@ -66,7 +68,7 @@ def build_default_feature_schema(data_config: DataConfig, model_config: ModelCon
             num_embeddings=vocab_size,
             embedding_dim=embedding_dim,
             pooling_type="mean",
-            max_length=int(data_config.max_feature_tokens),
+            max_length=1,
         ),
         FeatureTableSpec(
             name="context_tokens",
@@ -83,7 +85,7 @@ def build_default_feature_schema(data_config: DataConfig, model_config: ModelCon
             embedding_dim=embedding_dim,
             pooling_type="mean",
             is_sequence=True,
-            max_length=int(data_config.max_seq_len),
+            max_length=history_capacity,
         ),
         FeatureTableSpec(
             name="candidate_post_tokens",
@@ -91,7 +93,7 @@ def build_default_feature_schema(data_config: DataConfig, model_config: ModelCon
             num_embeddings=vocab_size,
             embedding_dim=embedding_dim,
             pooling_type="mean",
-            max_length=int(data_config.max_feature_tokens),
+            max_length=candidate_event_capacity,
         ),
         FeatureTableSpec(
             name="candidate_author_tokens",
@@ -99,7 +101,7 @@ def build_default_feature_schema(data_config: DataConfig, model_config: ModelCon
             num_embeddings=vocab_size,
             embedding_dim=embedding_dim,
             pooling_type="mean",
-            max_length=int(data_config.max_feature_tokens),
+            max_length=2,
         ),
         FeatureTableSpec(
             name="history_post_tokens",
@@ -108,7 +110,7 @@ def build_default_feature_schema(data_config: DataConfig, model_config: ModelCon
             embedding_dim=embedding_dim,
             pooling_type="mean",
             is_sequence=True,
-            max_length=int(data_config.max_seq_len),
+            max_length=history_capacity,
         ),
         FeatureTableSpec(
             name="history_author_tokens",
@@ -117,7 +119,7 @@ def build_default_feature_schema(data_config: DataConfig, model_config: ModelCon
             embedding_dim=embedding_dim,
             pooling_type="mean",
             is_sequence=True,
-            max_length=int(data_config.max_seq_len),
+            max_length=history_capacity,
         ),
         FeatureTableSpec(
             name="history_action_tokens",
@@ -126,7 +128,7 @@ def build_default_feature_schema(data_config: DataConfig, model_config: ModelCon
             embedding_dim=embedding_dim,
             pooling_type="mean",
             is_sequence=True,
-            max_length=int(data_config.max_seq_len),
+            max_length=history_capacity,
         ),
         FeatureTableSpec(
             name="history_time_gap",
@@ -135,7 +137,7 @@ def build_default_feature_schema(data_config: DataConfig, model_config: ModelCon
             embedding_dim=embedding_dim,
             pooling_type="mean",
             is_sequence=True,
-            max_length=int(data_config.max_seq_len),
+            max_length=history_capacity,
         ),
         FeatureTableSpec(
             name="history_group_ids",
@@ -144,7 +146,7 @@ def build_default_feature_schema(data_config: DataConfig, model_config: ModelCon
             embedding_dim=embedding_dim,
             pooling_type="mean",
             is_sequence=True,
-            max_length=int(data_config.max_seq_len),
+            max_length=history_capacity,
         ),
         *sequence_table_specs,
     )

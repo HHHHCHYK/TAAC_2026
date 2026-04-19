@@ -47,6 +47,13 @@ jobs:
         with:
           enable-cache: true
 
+        - name: Restore benchmark charts cache
+          id: cache-benchmark-charts
+          uses: actions/cache/restore@v5
+          with:
+            path: docs/assets/figures/benchmarks
+            key: ${{ runner.os }}-docs-bench-${{ github.sha }}
+
       - name: Sync project environment
         run: uv sync --locked
 
@@ -232,6 +239,13 @@ jobs:
 
       - name: Generate benchmark charts
         run: uv run taac-bench-report --input benchmark-result.json
+
+      - name: Save benchmark charts cache
+        if: steps.cache-benchmark-charts.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v5
+        with:
+          path: docs/assets/figures/benchmarks
+          key: ${{ runner.os }}-docs-bench-${{ github.sha }}
 
       - name: Summarize benchmark evidence
         env:
