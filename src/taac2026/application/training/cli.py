@@ -10,6 +10,7 @@ from ...infrastructure.io.console import configure_logging, print_summary_table
 def parse_train_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Train a TAAC 2026 experiment")
     parser.add_argument("--experiment", required=True, help="Experiment package path or module path")
+    parser.add_argument("--dataset-path", help="Override dataset path")
     parser.add_argument("--run-dir", help="Override output directory")
     parser.add_argument("--compile", action="store_true", help="Enable torch.compile for model execution")
     parser.add_argument("--compile-backend", help="Override torch.compile backend")
@@ -25,6 +26,8 @@ def main(argv: list[str] | None = None) -> int:
     configure_logging()
     args = parse_train_args(argv)
     experiment = load_experiment_package(args.experiment)
+    if args.dataset_path:
+        experiment.data.dataset_path = args.dataset_path
     if args.run_dir:
         experiment.train.output_dir = args.run_dir
     if args.compile:

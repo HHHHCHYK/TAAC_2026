@@ -130,3 +130,16 @@ def test_parse_train_args_accepts_runtime_optimization_flags() -> None:
     assert args.compile_mode == "max-autotune"
     assert args.amp is True
     assert args.amp_dtype == "bfloat16"
+
+
+def test_parse_train_args_accepts_dataset_path_override() -> None:
+    args = parse_train_args(
+        [
+            "--experiment",
+            "config/baseline",
+            "--dataset-path",
+            "/tmp/online-data",
+        ]
+    )
+
+    assert args.dataset_path == "/tmp/online-data"

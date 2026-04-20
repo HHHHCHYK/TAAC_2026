@@ -21,6 +21,7 @@ icon: lucide/house
 | ---------------- | ------------------------------------------------------------- |
 | **统一训练框架** | 一条命令完成训练、评估、checkpoint 保存                       |
 | **目录式实验包** | 每个实验包独立管理数据、模型、损失函数，互不干扰              |
+| **线上训练打包** | 将指定实验包压缩成单个 zip，并提供自动解压和训练入口脚本      |
 | **超参数搜索**   | 基于 Optuna，自动检测 GPU 空闲显存并发派发 trial              |
 | **回归测试**     | Unit / Integration / Property 三层测试，CI 自动覆盖率门控     |
 | **论文复现**     | 内置 InterFormer、OneTrans、HyFormer 等已发表工作的可运行实现 |
@@ -60,6 +61,9 @@ uv sync --locked
 # 训练 baseline
 uv run taac-train --experiment config/baseline
 
+# 打包 baseline 为线上训练 zip
+uv run taac-package-train --experiment config/baseline
+
 # 评估
 uv run taac-evaluate single --experiment config/baseline
 
@@ -68,3 +72,5 @@ uv run taac-search --experiment config/baseline --trials 20
 ```
 
 → 详细步骤见 [快速开始](getting-started.md)
+
+→ 线上训练压缩包格式见 [线上训练打包](guide/online-training-bundle.md)

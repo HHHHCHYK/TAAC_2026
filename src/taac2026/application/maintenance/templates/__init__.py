@@ -1,0 +1,1 @@
+"""Template resources for maintenance CLIs."""

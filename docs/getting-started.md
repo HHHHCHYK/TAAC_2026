@@ -78,6 +78,14 @@ outputs/config/baseline/
 uv run taac-train --experiment config/baseline --compile --amp --amp-dtype bfloat16
 ```
 
+如果你需要把单个实验包上传到线上训练平台，可以先生成单 zip：
+
+```bash
+uv run taac-package-train --experiment config/baseline
+```
+
+默认产物会写到 `outputs/training_bundles/baseline-train-bundle.zip`。
+
 ## 评估
 
 ```bash
@@ -131,6 +139,48 @@ uv run taac-train --experiment config/hyformer
 
 → 完整实验包列表见 [实验包总览](experiments/index.md)
 
+## 线上训练打包
+
+`taac-package-train` 会把指定实验包裁剪成训练所需的最小运行时，并输出单个 zip。
+zip 顶层包含：
+
+- `run.sh`：自动解压 payload、执行 `uv sync --locked`、调用训练 CLI
+- `runtime_payload.tar.gz`：最小训练源码与目标实验包
+- `bundle_manifest.json`：打包元数据
+- `README.md`：压缩包内的使用说明
+
+其中 `runtime_payload.tar.gz` 解压后包含 `pyproject.toml`、`uv.lock` 和最小训练源码。
+
+```bash
+# 生成默认命名的 zip
+uv run taac-package-train --experiment config/baseline
+
+# 自定义输出文件名
+uv run taac-package-train --experiment config/interformer --output /tmp/interformer-online.zip --force
+```
+
+解压后，线上环境最少只需要：
+
+```bash
+export TAAC_DATASET_PATH=/path/to/train.parquet
+bash run.sh --compile --amp --amp-dtype bfloat16
+```
+
+其中：
+
+- `TAAC_DATASET_PATH` 必填，指向 parquet 文件或数据缓存目录
+- `TAAC_OUTPUT_DIR` 可选，覆盖训练输出目录
+- `TAAC_ENABLE_TE=1` 可选，为 bundle 安装 transformer-engine 额外依赖
+- `TAAC_FORCE_EXTRACT=1` 可选，强制重新解压 payload
+
+如果你不走 bundle，也可以直接对训练 CLI 传运行时数据路径：
+
+```bash
+uv run taac-train --experiment config/baseline --dataset-path /path/to/train.parquet
+```
+
+→ 完整参数和目录结构见 [线上训练打包](guide/online-training-bundle.md)
+
 ## 跑测试
 
 ```bash
@@ -167,6 +217,7 @@ uv run --no-project --isolated --with zensical zensical build --clean
 | `taac-train`                  | 训练实验包         |
 | `taac-evaluate`               | 评估 checkpoint    |
 | `taac-search`                 | Optuna 超参数搜索  |
+| `taac-package-train`          | 打包线上训练 zip   |
 | `taac-bench-report`           | 生成 benchmark 图表 |
 | `taac-plot-model-performance` | 生成性能对比图     |
 | `taac-clean-pycache`          | 清理 `__pycache__` |

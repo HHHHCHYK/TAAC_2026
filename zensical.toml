@@ -40,6 +40,7 @@ nav = [
         { "TAAC 2025 论文洞察" = "analysis/taac2025-insights.md" },
     ] },
     { "指南" = [
+        { "线上训练打包" = "guide/online-training-bundle.md" },
         { "超参数搜索" = "guide/search.md" },
         { "测试" = "guide/testing.md" },
         { "开发容器 (WSL2 + Docker)" = "guide/devcontainer.md" },

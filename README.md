@@ -68,6 +68,9 @@ uv sync --locked
 # 训练 starter baseline
 uv run taac-train --experiment config/baseline
 
+# 打包单个实验包为线上训练 zip
+uv run taac-package-train --experiment config/baseline
+
 # 用 optuna 搜索 baseline，默认会按当前可见 GPU 空闲显存自动并行派发 trial
 # 默认约束仍然是参数量 <= 3 GiB、验证集端到端推理总时长 <= 180 秒
 uv run taac-search --experiment config/baseline --trials 20
@@ -102,7 +105,7 @@ uv run pytest tests -q
 | UniScaleFormer | [config/uniscaleformer](config/uniscaleformer)         | [twx145/Unirec](https://github.com/twx145/Unirec)                                                                                             | `outputs/config/uniscaleformer` | forward regression + smoke summary |
 | O_o            | [config/oo](config/oo)                                 | [salmon1802/O_o](https://github.com/salmon1802/O_o)                                                                                           | `outputs/config/oo`          | forward regression + smoke summary |
 
-更详细的训练命令、输出文件说明和各实验包说明，可以看 [docs/getting-started.md](docs/getting-started.md)、[docs/experiments/index.md](docs/experiments/index.md) 和 [docs/architecture.md](docs/architecture.md)。
+更详细的训练命令、线上训练打包说明和各实验包说明，可以看 [docs/getting-started.md](docs/getting-started.md)、[docs/guide/online-training-bundle.md](docs/guide/online-training-bundle.md)、[docs/experiments/index.md](docs/experiments/index.md) 和 [docs/architecture.md](docs/architecture.md)。
 
 ------
 

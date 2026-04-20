@@ -52,6 +52,7 @@ explicit = true
 taac-train = "taac2026.application.training.cli:main"
 taac-evaluate = "taac2026.application.evaluation.cli:main"
 taac-search = "taac2026.application.search.cli:main"
+taac-package-train = "taac2026.application.maintenance.package_training:main"
 taac-clean-pycache = "taac2026.application.maintenance.clean_pycache:main"
 taac-clean-github-logs = "taac2026.application.maintenance.github_cleanup:main"
 taac-plot-model-performance = "taac2026.application.reporting.cli:main"
@@ -64,6 +65,9 @@ package-dir = { "" = "src" }
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+"taac2026.application.maintenance.templates" = ["*.tmpl"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
