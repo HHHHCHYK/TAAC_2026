@@ -75,6 +75,8 @@ jobs:
         with:
           name: coverage-cpu-data
           path: .coverage.cpu
+          include-hidden-files: true
+          if-no-files-found: error
 
   coverage:
     name: Coverage Report
@@ -99,7 +101,7 @@ jobs:
           enable-cache: true
 
       - name: Download CPU coverage data
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v8
         with:
           name: coverage-cpu-data
           path: .coverage-artifacts/cpu

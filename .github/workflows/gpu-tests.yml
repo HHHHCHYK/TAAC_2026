@@ -63,6 +63,8 @@ jobs:
         with:
           name: coverage-gpu-data
           path: .coverage.gpu
+          include-hidden-files: true
+          if-no-files-found: error
 
       - name: Upload GPU runtime evidence
         if: always()
