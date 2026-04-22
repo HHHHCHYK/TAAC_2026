@@ -6,7 +6,7 @@ icon: lucide/search
 
 ## 概述
 
-框架集成了基于 [Optuna](https://optuna.org/) 的超参数搜索，支持自动 GPU 调度、参数量/延迟约束和多 trial 并发。
+框架集成了基于 [Optuna](https://optuna.org/) 的超参数搜索，支持自动 GPU 调度、参数量约束，以及可选的模型单样本前向计算量约束和多 trial 并发。
 
 ## 基本用法
 
@@ -23,11 +23,11 @@ uv run taac-search --experiment config/baseline --trials 20 --scheduler auto
 | 约束项         | 默认值 | 说明                                            |
 | -------------- | ------ | ----------------------------------------------- |
 | 模型参数量上限 | 3 GiB  | `SearchConfig.max_parameter_bytes`              |
-| 推理总时长上限 | 180 秒 | `SearchConfig.max_end_to_end_inference_seconds` |
+| 模型单样本前向计算量上限 | 未启用 | `SearchConfig.max_model_tflops_per_sample` |
 | Trial 数量     | 20     | `SearchConfig.n_trials`                         |
 | 超时           | 无     | `SearchConfig.timeout_seconds`                  |
 
-这些约束与 TAAC 2026 比赛的官方评估限制对齐。
+如需启用模型计算量预算，可通过 CLI 传入 `--max-model-tflops-per-sample`，或在实验包里显式设置 `SearchConfig.max_model_tflops_per_sample`。搜索阶段不会复用真实验证样本，而是用固定 synthetic batch 对模型做一次单样本前向 profiling，再读取其中的 `flops_per_sample` 作为预算口径，因此不受训练 epoch、验证集规模、样本排序或 latency probe 样本量影响。
 
 ## GPU 自动调度
 
@@ -48,7 +48,7 @@ class SearchConfig:
     direction: str = "maximize"                   # 优化方向
     sampler_seed: int | None = None
     max_parameter_bytes: int = 3 * 1024**3        # 3 GiB
-    max_end_to_end_inference_seconds: float = 180  # 180 秒
+    max_model_tflops_per_sample: float | None = None
 ```
 
 ## 自定义搜索空间

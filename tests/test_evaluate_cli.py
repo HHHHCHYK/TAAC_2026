@@ -47,7 +47,7 @@ def test_evaluate_checkpoint_accepts_compatible_checkpoint(test_workspace: TestW
 
     assert payload["model_name"] == "temp_experiment"
     assert "coverage" in payload["metrics"]["gauc"]
-    assert payload["profiling"]["schema_version"] == 1
+    assert payload["profiling"]["schema_version"] == 2
     assert payload["runtime_optimization"]["torch_compile"]["active"] is False
     assert "external_profilers" in payload["profiling"]
     assert output_path.exists()

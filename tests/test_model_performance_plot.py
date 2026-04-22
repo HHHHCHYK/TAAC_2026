@@ -13,7 +13,7 @@ from taac2026.reporting.model_performance_plot import (
 )
 
 
-def _summary_payload(*, auc: float, parameter_size_mb: float, total_parameters: int, total_tflops: float) -> dict:
+def _summary_payload(*, auc: float, parameter_size_mb: float, total_parameters: int, profile_tflops: float) -> dict:
     return {
         "metrics": {"auc": auc},
         "model_profile": {
@@ -21,7 +21,7 @@ def _summary_payload(*, auc: float, parameter_size_mb: float, total_parameters: 
             "total_parameters": total_parameters,
         },
         "compute_profile": {
-            "estimated_end_to_end_tflops_total": total_tflops,
+            "train_step_tflops": profile_tflops,
         },
     }
 
@@ -42,7 +42,7 @@ def test_load_base_points_falls_back_to_experiments_doc(tmp_path: Path) -> None:
                 auc=0.700 + index * 0.001,
                 parameter_size_mb=16.0 + index,
                 total_parameters=4_000_000 + index * 100_000,
-                total_tflops=1.0 + index * 0.1,
+                profile_tflops=1.0 + index * 0.1,
             ),
         )
 
@@ -80,7 +80,7 @@ def test_plot_model_performance_merges_search_trials_and_writes_outputs(tmp_path
                 auc=0.710 + index * 0.005,
                 parameter_size_mb=12.0 + index,
                 total_parameters=3_000_000 + index * 250_000,
-                total_tflops=1.0 + index * 0.2,
+                profile_tflops=1.0 + index * 0.2,
             ),
         )
 
@@ -91,7 +91,7 @@ def test_plot_model_performance_merges_search_trials_and_writes_outputs(tmp_path
             auc=0.905,
             parameter_size_mb=20.0,
             total_parameters=5_000_000,
-            total_tflops=3.5,
+            profile_tflops=3.5,
         ),
     )
 
@@ -159,7 +159,7 @@ def test_load_base_points_uses_available_summaries_when_docs_snapshot_is_absent(
             auc=0.701,
             parameter_size_mb=12.0,
             total_parameters=3_000_000,
-            total_tflops=1.2,
+            profile_tflops=1.2,
         ),
     )
 

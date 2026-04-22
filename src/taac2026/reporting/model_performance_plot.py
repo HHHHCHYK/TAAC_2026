@@ -88,7 +88,7 @@ def _point_from_payload(slug: str, label: str, payload: dict, *, source: str, ev
         auc=float(metrics["auc"]),
         params_million=params_million,
         parameter_size_mb=parameter_size_mb,
-        total_tflops=float(compute_profile.get("estimated_end_to_end_tflops_total", 0.0)),
+        total_tflops=float(compute_profile.get("train_step_tflops", 0.0)),
         source=source,
         evidence_path=evidence_path,
     )
@@ -243,7 +243,7 @@ def metric_config(x_metric: XMetric) -> dict[str, object]:
     if x_metric == "compute":
         return {
             "title": "Model Performance VS Compute",
-            "xlabel": "Estimated End-to-End Training Compute (TFLOPs)",
+            "xlabel": "Profiled Single Train-Step Compute (TFLOPs)",
             "subtitle": "sample parquet, baseline point overridden by optuna best when available",
             "x_getter": lambda point: point.total_tflops,
             "x_formatter": FuncFormatter(lambda value, _pos: f"{value:g}"),

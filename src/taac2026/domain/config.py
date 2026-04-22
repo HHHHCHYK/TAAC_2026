@@ -5,7 +5,6 @@ from dataclasses import dataclass, field
 
 DEFAULT_SEQUENCE_NAMES = ("domain_a", "domain_b", "domain_c", "domain_d")
 DEFAULT_MAX_PARAMETER_BYTES = 3 * 1024 * 1024 * 1024
-DEFAULT_MAX_END_TO_END_INFERENCE_SECONDS = 180.0
 
 
 @dataclass(slots=True)
@@ -79,11 +78,10 @@ class SearchConfig:
     direction: str = "maximize"
     sampler_seed: int | None = None
     max_parameter_bytes: int = DEFAULT_MAX_PARAMETER_BYTES
-    max_end_to_end_inference_seconds: float = DEFAULT_MAX_END_TO_END_INFERENCE_SECONDS
+    max_model_tflops_per_sample: float | None = None
 
 
 __all__ = [
-    "DEFAULT_MAX_END_TO_END_INFERENCE_SECONDS",
     "DEFAULT_MAX_PARAMETER_BYTES",
     "DEFAULT_SEQUENCE_NAMES",
     "DataConfig",

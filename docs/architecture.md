@@ -160,7 +160,7 @@ graph TD
 - `DataConfig`：数据集路径、序列长度、dense 维度、切分比例等
 - `ModelConfig`：embedding / hidden 维度、层数、头数、各种子结构参数
 - `TrainConfig`：epochs、batch size、学习率、AMP、compile、输出目录
-- `SearchConfig`：Optuna trial 数、时间预算、参数量限制、推理时延预算
+- `SearchConfig`：Optuna trial 数、时间预算、参数量限制，以及可选的模型单样本前向计算量预算
 
 这些配置既用于训练 / 评估，也用于测试里的最小实验包构造。
 

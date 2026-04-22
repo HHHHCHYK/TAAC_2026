@@ -21,9 +21,9 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--direction", choices=["maximize", "minimize"], help="Optimization direction")
     parser.add_argument("--max-parameter-gb", type=float, help="Hard cap on parameter bytes in GiB units")
     parser.add_argument(
-        "--max-end-to-end-inference-seconds",
+        "--max-model-tflops-per-sample",
         type=float,
-        help="Hard cap on estimated total inference time across the validation split",
+        help="Hard cap on profiled model forward compute per sample, in TFLOPs",
     )
     parser.add_argument("--seed", type=int, help="Optuna sampler seed override")
     parser.add_argument(
@@ -100,8 +100,24 @@ def _format_search_report(report: dict[str, Any]) -> str:
         final_budget_status = best_trial.get("final_budget_status") or {}
         parameter_mib = float(final_budget_status.get("parameter_bytes", 0.0)) / float(1024**2)
         max_parameter_gib = float(final_budget_status.get("max_parameter_gib", 0.0))
-        inference_seconds = float(final_budget_status.get("estimated_end_to_end_inference_seconds", 0.0))
-        inference_budget_seconds = float(final_budget_status.get("max_end_to_end_inference_seconds", 0.0))
+        model_tflops_per_sample = float(final_budget_status.get("model_tflops_per_sample", 0.0))
+        model_compute_profile_available = bool(final_budget_status.get("model_compute_profile_available", model_tflops_per_sample > 0.0))
+        model_compute_budget_reason = final_budget_status.get("model_compute_budget_reason")
+        model_budget_tflops = final_budget_status.get("max_model_tflops_per_sample")
+        model_compute_label = (
+            f"{model_tflops_per_sample:.6f} TFLOPs/sample"
+            if model_compute_profile_available
+            else "unavailable"
+        )
+        if model_budget_tflops is None:
+            compute_summary = f"model_compute={model_compute_label} / uncapped"
+        else:
+            compute_summary = (
+                f"model_compute={model_compute_label} / "
+                f"{float(model_budget_tflops):.6f} TFLOPs/sample"
+            )
+        if model_compute_budget_reason:
+            compute_summary = f"{compute_summary} ({model_compute_budget_reason})"
 
         lines.extend(
             [
@@ -110,8 +126,7 @@ def _format_search_report(report: dict[str, Any]) -> str:
                 f"value: {best_trial['value']:.6f}",
                 f"trial dir: {best_trial['trial_dir']}",
                 f"summary: {best_trial['summary_path']}",
-                f"budget: params={parameter_mib:.2f} MiB / {max_parameter_gib:.2f} GiB, "
-                f"inference={inference_seconds:.3f}s / {inference_budget_seconds:.3f}s",
+                f"budget: params={parameter_mib:.2f} MiB / {max_parameter_gib:.2f} GiB, {compute_summary}",
                 "params:",
             ]
         )
@@ -151,8 +166,8 @@ def main(argv: list[str] | None = None) -> int:
         experiment.search.sampler_seed = args.seed
     if args.max_parameter_gb is not None:
         experiment.search.max_parameter_bytes = int(args.max_parameter_gb * (1024**3))
-    if args.max_end_to_end_inference_seconds is not None:
-        experiment.search.max_end_to_end_inference_seconds = args.max_end_to_end_inference_seconds
+    if args.max_model_tflops_per_sample is not None:
+        experiment.search.max_model_tflops_per_sample = args.max_model_tflops_per_sample
 
     report = run_search(
         experiment,

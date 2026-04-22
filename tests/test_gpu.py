@@ -25,7 +25,7 @@ import torch
 
 from taac2026.application.training.profiling import (
     collect_loader_outputs,
-    collect_model_profile,
+    collect_synthetic_model_profile,
     measure_latency,
     select_device,
     set_random_seed,
@@ -286,13 +286,20 @@ class TestCudaProfiling:
         assert latency["mean_latency_ms_per_sample"] > 0.0
         assert latency["measured_batches"] > 0
 
-    def test_collect_model_profile_with_cuda(self, gpu_workspace: Path, gpu_device: torch.device):
+    def test_collect_synthetic_model_profile_with_cuda(self, gpu_workspace: Path, gpu_device: torch.device):
         data_cfg, model_cfg, train_cfg = _make_configs(gpu_workspace)
-        _, val_loader, data_stats = build_local_data_pipeline(data_cfg, model_cfg, train_cfg)
+        _, _, data_stats = build_local_data_pipeline(data_cfg, model_cfg, train_cfg)
         model = TinyExperimentModel(data_cfg, model_cfg, data_stats.dense_dim).to(gpu_device)
         rt = prepare_runtime_execution(model, train_cfg, gpu_device)
-        profile = collect_model_profile(model, val_loader, gpu_device, runtime_execution=rt)
+        profile = collect_synthetic_model_profile(
+            model,
+            data_cfg,
+            model_cfg,
+            gpu_device,
+            runtime_execution=rt,
+        )
         assert profile["device"] == "cuda:0"
+        assert profile["profile_scope"] == "synthetic_fixed_forward"
         assert profile["total_parameters"] > 0
         assert "cuda" in profile["operator_summary"]["activities"]
 

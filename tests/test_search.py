@@ -33,7 +33,7 @@ def test_parse_args_accepts_budget_overrides() -> None:
             "maximize",
             "--max-parameter-gb",
             "3.0",
-            "--max-end-to-end-inference-seconds",
+            "--max-model-tflops-per-sample",
             "180",
             "--seed",
             "11",
@@ -58,7 +58,7 @@ def test_parse_args_accepts_budget_overrides() -> None:
     assert args.metric_name == "metrics.auc"
     assert args.direction == "maximize"
     assert args.max_parameter_gb == 3.0
-    assert args.max_end_to_end_inference_seconds == 180.0
+    assert args.max_model_tflops_per_sample == 180.0
     assert args.seed == 11
     assert args.scheduler == "auto"
     assert args.gpu_indices == "0,2,5"
@@ -66,6 +66,12 @@ def test_parse_args_accepts_budget_overrides() -> None:
     assert args.max_jobs_per_gpu == 3
     assert args.poll_interval_seconds == 2.5
     assert args.json is True
+
+
+def test_parse_args_leaves_compute_budget_unset_by_default() -> None:
+    args = parse_args(["--experiment", "config/baseline"])
+
+    assert args.max_model_tflops_per_sample is None
 
 
 def test_run_search_writes_study_artifacts(test_workspace: TestWorkspace) -> None:
@@ -150,8 +156,9 @@ def test_format_search_report_is_compact() -> None:
             "final_budget_status": {
                 "parameter_bytes": 1024 * 1024 * 64,
                 "max_parameter_gib": 3.0,
-                "estimated_end_to_end_inference_seconds": 12.5,
-                "max_end_to_end_inference_seconds": 180.0,
+                "model_tflops_per_sample": 12.5,
+                "model_compute_profile_available": True,
+                "max_model_tflops_per_sample": 180.0,
             },
         },
         "trials": [
@@ -164,8 +171,73 @@ def test_format_search_report_is_compact() -> None:
     assert "Search complete" in rendered
     assert "best trial: #2" in rendered
     assert "model.hidden_dim = 128" in rendered
+    assert "model_compute=12.500000 TFLOPs/sample / 180.000000 TFLOPs/sample" in rendered
     assert "trial exceeds search budget before training" in rendered
     assert "'trials':" not in rendered
+
+
+def test_format_search_report_handles_uncapped_compute_budget() -> None:
+    report = {
+        "experiment_name": "demo",
+        "study_dir": "outputs/demo_optuna",
+        "study_summary_path": "outputs/demo_optuna/study_summary.json",
+        "best_experiment_path": "outputs/demo_optuna/best_experiment.json",
+        "search": {"metric_name": "best_val_auc", "direction": "maximize"},
+        "trial_state_counts": {"COMPLETE": 1},
+        "trial_count": 1,
+        "best_trial": {
+            "number": 0,
+            "value": 0.812345,
+            "trial_dir": "outputs/demo_optuna/trial_0000",
+            "summary_path": "outputs/demo_optuna/trial_0000/summary.json",
+            "params": {},
+            "final_budget_status": {
+                "parameter_bytes": 1024 * 1024 * 64,
+                "max_parameter_gib": 3.0,
+                "model_tflops_per_sample": 12.5,
+                "model_compute_profile_available": True,
+                "max_model_tflops_per_sample": None,
+            },
+        },
+        "trials": [],
+    }
+
+    rendered = _format_search_report(report)
+
+    assert "model_compute=12.500000 TFLOPs/sample / uncapped" in rendered
+
+
+def test_format_search_report_handles_unavailable_compute_profile() -> None:
+    report = {
+        "experiment_name": "demo",
+        "study_dir": "outputs/demo_optuna",
+        "study_summary_path": "outputs/demo_optuna/study_summary.json",
+        "best_experiment_path": "outputs/demo_optuna/best_experiment.json",
+        "search": {"metric_name": "best_val_auc", "direction": "maximize"},
+        "trial_state_counts": {"COMPLETE": 1},
+        "trial_count": 1,
+        "best_trial": {
+            "number": 0,
+            "value": 0.812345,
+            "trial_dir": "outputs/demo_optuna/trial_0000",
+            "summary_path": "outputs/demo_optuna/trial_0000/summary.json",
+            "params": {},
+            "final_budget_status": {
+                "parameter_bytes": 1024 * 1024 * 64,
+                "max_parameter_gib": 3.0,
+                "model_tflops_per_sample": 0.0,
+                "model_compute_profile_available": False,
+                "model_compute_budget_reason": "model FLOPs profile unavailable",
+                "max_model_tflops_per_sample": 180.0,
+            },
+        },
+        "trials": [],
+    }
+
+    rendered = _format_search_report(report)
+
+    assert "model_compute=unavailable / 180.000000 TFLOPs/sample" in rendered
+    assert "model FLOPs profile unavailable" in rendered
 
 
 def test_parse_gpu_indices_handles_empty_values() -> None:

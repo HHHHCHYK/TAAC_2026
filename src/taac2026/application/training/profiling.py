@@ -10,12 +10,16 @@ import numpy as np
 import torch
 from torch.profiler import ProfilerActivity, profile
 
+from ...domain.config import DataConfig, ModelConfig
 from ...domain.experiment import ExperimentSpec
+from ...domain.features import FeatureSchema, sync_feature_schema
 from ...domain.metrics import percentile, safe_mean
+from ...domain.types import BatchTensors
+from ...infrastructure.io.sparse_collate import build_batch_torchrec_features, validate_default_feature_schema
 from .runtime_optimization import RuntimeExecution, prepare_runtime_execution
 
 
-PROFILE_SCHEMA_VERSION = 1
+PROFILE_SCHEMA_VERSION = 2
 DEFAULT_OPERATOR_SUMMARY_LIMIT = 8
 
 
@@ -148,6 +152,290 @@ def _parameter_profile(model) -> tuple[int, int, int]:
     trainable_parameters = sum(parameter.numel() for parameter in model.parameters() if parameter.requires_grad)
     parameter_bytes = sum(parameter.numel() * parameter.element_size() for parameter in model.parameters())
     return int(total_parameters), int(trainable_parameters), int(parameter_bytes)
+
+
+def _measure_model_profile_batch(
+    profiled_model,
+    batch,
+    device: torch.device,
+    runtime_execution: RuntimeExecution | None = None,
+) -> dict[str, Any]:
+    profile_batch = batch.to(device)
+    batch_size = max(profile_batch.batch_size, 1)
+
+    if device.type == "cuda":
+        torch.cuda.synchronize(device)
+    start = time.perf_counter()
+    with profile(activities=_profiler_activities_for(device), with_flops=True, record_shapes=False, acc_events=True) as profiler:
+        with torch.no_grad():
+            autocast_context = runtime_execution.autocast_context() if runtime_execution is not None else nullcontext()
+            with autocast_context:
+                _ = profiled_model(profile_batch)
+    if device.type == "cuda":
+        torch.cuda.synchronize(device)
+    wall_time_ms = (time.perf_counter() - start) * 1000.0
+    total_flops = float(profiler.key_averages().total_average().flops or 0.0)
+
+    return {
+        "profile_batch_size": int(profile_batch.batch_size),
+        "flops_per_batch": total_flops,
+        "tflops_per_batch": total_flops / 1.0e12,
+        "flops_per_sample": total_flops / float(batch_size),
+        "profiled_wall_time_ms": wall_time_ms,
+        "profiled_wall_time_ms_per_sample": wall_time_ms / float(batch_size),
+        "operator_summary": _summarize_profiler_trace(profiler, device),
+    }
+
+
+def _synthetic_token_tensor(batch_size: int, length: int, num_embeddings: int, *, offset: int = 0) -> torch.Tensor:
+    if length <= 0:
+        return torch.zeros((batch_size, 0), dtype=torch.long)
+    if num_embeddings <= 1:
+        return torch.zeros((batch_size, length), dtype=torch.long)
+    base = torch.arange(length, dtype=torch.long) + int(offset)
+    values = (base % (int(num_embeddings) - 1)) + 1
+    return values.unsqueeze(0).repeat(batch_size, 1)
+
+
+def _synthetic_mask(batch_size: int, length: int) -> torch.Tensor:
+    if length <= 0:
+        return torch.zeros((batch_size, 0), dtype=torch.bool)
+    return torch.ones((batch_size, length), dtype=torch.bool)
+
+
+def _table_max_length(feature_schema: FeatureSchema, name: str, fallback: int) -> int:
+    try:
+        table = feature_schema.table(name)
+    except KeyError:
+        return int(fallback)
+    if table.max_length is None:
+        return int(fallback)
+    return int(table.max_length)
+
+
+def _table_num_embeddings(feature_schema: FeatureSchema, name: str, fallback: int = 2) -> int:
+    try:
+        return int(feature_schema.table(name).num_embeddings)
+    except KeyError:
+        return int(fallback)
+
+
+def build_synthetic_profile_batch(
+    data_config: DataConfig,
+    model_config: ModelConfig,
+    *,
+    feature_schema: FeatureSchema | None = None,
+    batch_size: int = 1,
+    dense_dim_override: int | None = None,
+) -> BatchTensors:
+    resolved_feature_schema = sync_feature_schema(feature_schema, data_config, model_config)
+    resolved_batch_size = max(1, int(batch_size))
+    sequence_names = resolved_feature_schema.sequence_names or tuple(data_config.sequence_names)
+    validate_default_feature_schema(resolved_feature_schema, sequence_names)
+    history_capacity = _table_max_length(
+        resolved_feature_schema,
+        "history_tokens",
+        max(1, len(sequence_names)) * int(data_config.max_seq_len),
+    )
+    sequence_length = max(1, int(data_config.max_seq_len))
+    dense_dim = int(resolved_feature_schema.dense_dim if dense_dim_override is None else dense_dim_override)
+
+    user_tokens = _synthetic_token_tensor(
+        resolved_batch_size,
+        _table_max_length(resolved_feature_schema, "user_tokens", int(data_config.max_feature_tokens)),
+        _table_num_embeddings(resolved_feature_schema, "user_tokens", max(2, int(model_config.vocab_size))),
+        offset=1,
+    )
+    context_tokens = _synthetic_token_tensor(
+        resolved_batch_size,
+        _table_max_length(resolved_feature_schema, "context_tokens", int(data_config.max_feature_tokens)),
+        _table_num_embeddings(resolved_feature_schema, "context_tokens", max(2, int(model_config.vocab_size))),
+        offset=5,
+    )
+    candidate_tokens = _synthetic_token_tensor(
+        resolved_batch_size,
+        _table_max_length(resolved_feature_schema, "candidate_tokens", 1),
+        _table_num_embeddings(resolved_feature_schema, "candidate_tokens", max(2, int(model_config.vocab_size))),
+        offset=9,
+    )
+    candidate_post_tokens = _synthetic_token_tensor(
+        resolved_batch_size,
+        _table_max_length(resolved_feature_schema, "candidate_post_tokens", max(1, int(data_config.max_event_features))),
+        _table_num_embeddings(resolved_feature_schema, "candidate_post_tokens", max(2, int(model_config.vocab_size))),
+        offset=13,
+    )
+    candidate_author_tokens = _synthetic_token_tensor(
+        resolved_batch_size,
+        _table_max_length(resolved_feature_schema, "candidate_author_tokens", 2),
+        _table_num_embeddings(resolved_feature_schema, "candidate_author_tokens", max(2, int(model_config.vocab_size))),
+        offset=17,
+    )
+    history_tokens = _synthetic_token_tensor(
+        resolved_batch_size,
+        history_capacity,
+        _table_num_embeddings(resolved_feature_schema, "history_tokens", max(2, int(model_config.vocab_size))),
+        offset=21,
+    )
+    history_post_tokens = _synthetic_token_tensor(
+        resolved_batch_size,
+        history_capacity,
+        _table_num_embeddings(resolved_feature_schema, "history_post_tokens", max(2, int(model_config.vocab_size))),
+        offset=25,
+    )
+    history_author_tokens = _synthetic_token_tensor(
+        resolved_batch_size,
+        history_capacity,
+        _table_num_embeddings(resolved_feature_schema, "history_author_tokens", max(2, int(model_config.vocab_size))),
+        offset=29,
+    )
+    history_action_tokens = _synthetic_token_tensor(
+        resolved_batch_size,
+        history_capacity,
+        _table_num_embeddings(resolved_feature_schema, "history_action_tokens", max(2, int(model_config.vocab_size))),
+        offset=33,
+    )
+    history_time_gap = _synthetic_token_tensor(
+        resolved_batch_size,
+        history_capacity,
+        _table_num_embeddings(resolved_feature_schema, "history_time_gap", 64),
+        offset=37,
+    )
+    history_group_ids = _synthetic_token_tensor(
+        resolved_batch_size,
+        history_capacity,
+        _table_num_embeddings(resolved_feature_schema, "history_group_ids", max(2, len(sequence_names) + 1)),
+        offset=41,
+    )
+    if sequence_names:
+        sequence_tokens = torch.stack(
+            [
+                _synthetic_token_tensor(
+                    resolved_batch_size,
+                    _table_max_length(resolved_feature_schema, f"sequence:{sequence_name}", sequence_length),
+                    _table_num_embeddings(resolved_feature_schema, f"sequence:{sequence_name}", max(2, int(model_config.vocab_size))),
+                    offset=43 + sequence_index,
+                )
+                for sequence_index, sequence_name in enumerate(sequence_names)
+            ],
+            dim=1,
+        )
+        sequence_mask = torch.ones(sequence_tokens.shape, dtype=torch.bool)
+    else:
+        sequence_tokens = torch.zeros((resolved_batch_size, 0, sequence_length), dtype=torch.long)
+        sequence_mask = torch.zeros((resolved_batch_size, 0, sequence_length), dtype=torch.bool)
+    user_mask = _synthetic_mask(resolved_batch_size, int(user_tokens.shape[1]))
+    context_mask = _synthetic_mask(resolved_batch_size, int(context_tokens.shape[1]))
+    candidate_mask = _synthetic_mask(resolved_batch_size, int(candidate_tokens.shape[1]))
+    candidate_post_mask = _synthetic_mask(resolved_batch_size, int(candidate_post_tokens.shape[1]))
+    candidate_author_mask = _synthetic_mask(resolved_batch_size, int(candidate_author_tokens.shape[1]))
+    history_mask = _synthetic_mask(resolved_batch_size, history_capacity)
+    sparse_features, sequence_features = build_batch_torchrec_features(
+        sequence_names=sequence_names,
+        feature_schema=resolved_feature_schema,
+        user_tokens=user_tokens,
+        user_mask=user_mask,
+        context_tokens=context_tokens,
+        context_mask=context_mask,
+        candidate_tokens=candidate_tokens,
+        candidate_mask=candidate_mask,
+        candidate_post_tokens=candidate_post_tokens,
+        candidate_post_mask=candidate_post_mask,
+        candidate_author_tokens=candidate_author_tokens,
+        candidate_author_mask=candidate_author_mask,
+        history_tokens=history_tokens,
+        history_mask=history_mask,
+        history_post_tokens=history_post_tokens,
+        history_author_tokens=history_author_tokens,
+        history_action_tokens=history_action_tokens,
+        history_time_gap=history_time_gap,
+        history_group_ids=history_group_ids,
+        sequence_tokens=sequence_tokens,
+        sequence_mask=sequence_mask,
+    )
+    if dense_dim <= 0:
+        dense_features = torch.zeros((resolved_batch_size, 0), dtype=torch.float32)
+    else:
+        dense_features = torch.linspace(0.0, 1.0, steps=dense_dim, dtype=torch.float32).unsqueeze(0).repeat(resolved_batch_size, 1)
+    return BatchTensors(
+        dense_features=dense_features,
+        labels=torch.zeros(resolved_batch_size, dtype=torch.float32),
+        user_indices=torch.arange(resolved_batch_size, dtype=torch.long),
+        item_indices=torch.arange(1, resolved_batch_size + 1, dtype=torch.long),
+        item_logq=torch.zeros(resolved_batch_size, dtype=torch.float32),
+        sparse_features=sparse_features,
+        sequence_features=sequence_features,
+    )
+
+
+def collect_synthetic_model_profile(
+    model,
+    data_config: DataConfig,
+    model_config: ModelConfig,
+    device,
+    *,
+    feature_schema: FeatureSchema | None = None,
+    runtime_execution: RuntimeExecution | None = None,
+    profile_batch_size: int = 1,
+    dense_dim_override: int | None = None,
+) -> dict[str, float | int | str]:
+    device = torch.device(device)
+    total_parameters, trainable_parameters, parameter_bytes = _parameter_profile(model)
+    profiled_model = runtime_execution.execution_model if runtime_execution is not None else model
+    synthetic_batch = build_synthetic_profile_batch(
+        data_config,
+        model_config,
+        feature_schema=feature_schema,
+        batch_size=profile_batch_size,
+        dense_dim_override=dense_dim_override,
+    )
+    was_training = profiled_model.training
+    profiled_model.eval()
+    try:
+        profile = _measure_model_profile_batch(
+            profiled_model,
+            synthetic_batch,
+            device,
+            runtime_execution=runtime_execution,
+        )
+    finally:
+        if was_training:
+            profiled_model.train()
+
+    return {
+        "profile_schema_version": PROFILE_SCHEMA_VERSION,
+        "profile_scope": "synthetic_fixed_forward",
+        "profile_input_kind": "synthetic_fixed_batch",
+        "device": str(device),
+        "profiled_batches": 1,
+        "selected_batch_index": 0,
+        "total_parameters": int(total_parameters),
+        "trainable_parameters": int(trainable_parameters),
+        "parameter_size_bytes": int(parameter_bytes),
+        "parameter_size_mb": parameter_bytes / (1024.0 * 1024.0),
+        "flops_profile_status": "measured" if float(profile["flops_per_sample"]) > 0.0 else "unavailable",
+        **profile,
+    }
+
+
+def collect_experiment_model_profile(
+    experiment: ExperimentSpec,
+    model,
+    device,
+    *,
+    runtime_execution: RuntimeExecution | None = None,
+    profile_batch_size: int = 1,
+    dense_dim: int | None = None,
+) -> dict[str, float | int | str]:
+    return collect_synthetic_model_profile(
+        model,
+        experiment.data,
+        experiment.model,
+        device,
+        feature_schema=experiment.feature_schema,
+        runtime_execution=runtime_execution,
+        profile_batch_size=profile_batch_size,
+        dense_dim_override=dense_dim,
+    )
 
 
 def build_profiling_report(
@@ -328,12 +616,6 @@ def collect_inference_profile(
         val_sample_count = int(val_loader_or_sample_count)
     else:
         val_sample_count = _loader_num_samples(val_loader_or_sample_count)
-    mean_latency_ms_per_sample = float(latency.get("mean_latency_ms_per_sample", 0.0))
-    p50_latency_ms_per_sample = float(latency.get("p50_latency_ms_per_sample", 0.0))
-    p95_latency_ms_per_sample = float(latency.get("p95_latency_ms_per_sample", 0.0))
-    estimated_end_to_end_inference_seconds = (mean_latency_ms_per_sample * float(val_sample_count)) / 1000.0
-    estimated_end_to_end_inference_seconds_p50 = (p50_latency_ms_per_sample * float(val_sample_count)) / 1000.0
-    estimated_end_to_end_inference_seconds_p95 = (p95_latency_ms_per_sample * float(val_sample_count)) / 1000.0
     return {
         "profile_schema_version": PROFILE_SCHEMA_VERSION,
         "profile_scope": "scaled_eval_forward_latency",
@@ -344,87 +626,6 @@ def collect_inference_profile(
         "latency_measure_steps": int(experiment.train.latency_measure_steps),
         "latency_observed_batches": int(latency.get("measured_batches", 0)),
         "latency_observed_samples": int(latency.get("measured_samples", 0)),
-        "estimated_end_to_end_inference_seconds": estimated_end_to_end_inference_seconds,
-        "estimated_end_to_end_inference_minutes": estimated_end_to_end_inference_seconds / 60.0,
-        "estimated_end_to_end_inference_seconds_p50": estimated_end_to_end_inference_seconds_p50,
-        "estimated_end_to_end_inference_minutes_p50": estimated_end_to_end_inference_seconds_p50 / 60.0,
-        "estimated_end_to_end_inference_seconds_p95": estimated_end_to_end_inference_seconds_p95,
-        "estimated_end_to_end_inference_minutes_p95": estimated_end_to_end_inference_seconds_p95 / 60.0,
-    }
-
-
-def collect_model_profile(
-    model,
-    loader,
-    device,
-    runtime_execution: RuntimeExecution | None = None,
-) -> dict[str, float | int | str]:
-    device = torch.device(device)
-    total_parameters, trainable_parameters, parameter_bytes = _parameter_profile(model)
-
-    profile_batch = next(iter(loader), None)
-    if profile_batch is None:
-        return {
-            "profile_schema_version": PROFILE_SCHEMA_VERSION,
-            "profile_scope": "single_eval_forward",
-            "device": str(device),
-            "profile_batch_size": 0,
-            "total_parameters": int(total_parameters),
-            "trainable_parameters": int(trainable_parameters),
-            "parameter_size_bytes": int(parameter_bytes),
-            "parameter_size_mb": parameter_bytes / (1024.0 * 1024.0),
-            "flops_per_batch": 0.0,
-            "tflops_per_batch": 0.0,
-            "flops_per_sample": 0.0,
-            "profiled_wall_time_ms": 0.0,
-            "profiled_wall_time_ms_per_sample": 0.0,
-            "operator_summary": asdict(
-                ProfilerTraceSummary(
-                    activities=_profiler_activity_names(device),
-                    operator_count=0,
-                    sort_key="cpu_total_time_ms",
-                    top_operations=[],
-                )
-            ),
-        }
-
-    profile_batch = profile_batch.to(device)
-    batch_size = max(profile_batch.batch_size, 1)
-    profiled_model = runtime_execution.execution_model if runtime_execution is not None else model
-    was_training = profiled_model.training
-    profiled_model.eval()
-
-    if device.type == "cuda":
-        torch.cuda.synchronize(device)
-    start = time.perf_counter()
-    with profile(activities=_profiler_activities_for(device), with_flops=True, record_shapes=False, acc_events=True) as profiler:
-        with torch.no_grad():
-            autocast_context = runtime_execution.autocast_context() if runtime_execution is not None else nullcontext()
-            with autocast_context:
-                _ = profiled_model(profile_batch)
-    if device.type == "cuda":
-        torch.cuda.synchronize(device)
-    wall_time_ms = (time.perf_counter() - start) * 1000.0
-
-    if was_training:
-        profiled_model.train()
-
-    total_flops = float(profiler.key_averages().total_average().flops or 0.0)
-    return {
-        "profile_schema_version": PROFILE_SCHEMA_VERSION,
-        "profile_scope": "single_eval_forward",
-        "device": str(device),
-        "profile_batch_size": int(profile_batch.batch_size),
-        "total_parameters": int(total_parameters),
-        "trainable_parameters": int(trainable_parameters),
-        "parameter_size_bytes": int(parameter_bytes),
-        "parameter_size_mb": parameter_bytes / (1024.0 * 1024.0),
-        "flops_per_batch": total_flops,
-        "tflops_per_batch": total_flops / 1.0e12,
-        "flops_per_sample": total_flops / float(batch_size),
-        "profiled_wall_time_ms": wall_time_ms,
-        "profiled_wall_time_ms_per_sample": wall_time_ms / float(batch_size),
-        "operator_summary": _summarize_profiler_trace(profiler, device),
     }
 
 
@@ -442,23 +643,12 @@ def collect_compute_profile(
 ) -> dict[str, float | int | str]:
     from ...infrastructure.nn.defaults import resolve_experiment_builders
 
-    device = torch.device(device)
-    train_batches_per_epoch = _loader_num_batches(train_loader)
-    val_batches_per_epoch = _loader_num_batches(val_loader)
-    planned_latency_probe_batches = _count_latency_probe_batches(
-        total_batches=val_batches_per_epoch,
-        warmup_steps=experiment.train.latency_warmup_steps,
-        measure_steps=experiment.train.latency_measure_steps,
-    )
-    if latency is None:
-        latency_probe_batches = planned_latency_probe_batches
-        latency_probe_samples = _loader_num_samples(val_loader, max_batches=latency_probe_batches)
-        latency_probe_source = "loader_scan"
-    else:
-        latency_probe_batches = int(latency.get("profiled_batches", planned_latency_probe_batches))
-        latency_probe_samples = int(latency.get("profiled_samples", 0))
-        latency_probe_source = "latency_profile"
+    del model
+    del val_loader
+    del model_profile
+    del latency
 
+    device = torch.device(device)
     train_profile_batch = next(iter(train_loader), None)
     if train_profile_batch is None:
         train_step_flops = 0.0
@@ -519,33 +709,10 @@ def collect_compute_profile(
         if device.type == "cuda":
             torch.cuda.empty_cache()
 
-    eval_flops_per_sample = float(model_profile.get("flops_per_sample", 0.0))
-    train_samples_per_epoch = int(data_stats.train_size)
-    val_samples_per_epoch = int(data_stats.val_size)
-
-    estimated_train_flops_total = train_step_flops_per_sample * float(train_samples_per_epoch) * float(experiment.train.epochs)
-    estimated_eval_flops_total = eval_flops_per_sample * float(val_samples_per_epoch) * float(experiment.train.epochs)
-    estimated_latency_probe_flops_total = eval_flops_per_sample * float(latency_probe_samples)
-    estimated_end_to_end_flops_total = (
-        estimated_train_flops_total
-        + estimated_eval_flops_total
-        + estimated_latency_probe_flops_total
-    )
-
     return {
         "profile_schema_version": PROFILE_SCHEMA_VERSION,
-        "profile_scope": "single_train_step_scaled",
+        "profile_scope": "single_train_step_profile",
         "device": str(device),
-        "estimation_method": "profiled_single_step_scaled_by_observed_sample_counts",
-        "epochs": int(experiment.train.epochs),
-        "train_batches_per_epoch": train_batches_per_epoch,
-        "val_batches_per_epoch": val_batches_per_epoch,
-        "planned_latency_probe_batches": planned_latency_probe_batches,
-        "train_samples_per_epoch": train_samples_per_epoch,
-        "val_samples_per_epoch": val_samples_per_epoch,
-        "latency_probe_batches": latency_probe_batches,
-        "latency_probe_samples": latency_probe_samples,
-        "latency_probe_source": latency_probe_source,
         "train_profile_scope": "single_train_step_forward_backward_optimizer",
         "train_profile_batch_size": train_profile_batch_size,
         "train_step_wall_time_ms": train_step_wall_time_ms,
@@ -553,14 +720,6 @@ def collect_compute_profile(
         "train_step_flops": train_step_flops,
         "train_step_tflops": train_step_flops / 1.0e12,
         "train_step_flops_per_sample": train_step_flops_per_sample,
-        "estimated_train_flops_total": estimated_train_flops_total,
-        "estimated_train_tflops_total": estimated_train_flops_total / 1.0e12,
-        "estimated_eval_flops_total": estimated_eval_flops_total,
-        "estimated_eval_tflops_total": estimated_eval_flops_total / 1.0e12,
-        "estimated_latency_probe_flops_total": estimated_latency_probe_flops_total,
-        "estimated_latency_probe_tflops_total": estimated_latency_probe_flops_total / 1.0e12,
-        "estimated_end_to_end_flops_total": estimated_end_to_end_flops_total,
-        "estimated_end_to_end_tflops_total": estimated_end_to_end_flops_total / 1.0e12,
         "train_operator_summary": train_operator_summary,
     }
 
@@ -571,8 +730,9 @@ __all__ = [
     "collect_compute_profile",
     "collect_inference_profile",
     "collect_loader_outputs",
-    "collect_model_profile",
     "measure_latency",
     "select_device",
     "set_random_seed",
+    "build_synthetic_profile_batch",
+    "collect_synthetic_model_profile",
 ]

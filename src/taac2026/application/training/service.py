@@ -17,9 +17,9 @@ from .external_profilers import (
 from .profiling import (
     build_profiling_report,
     collect_compute_profile,
+    collect_experiment_model_profile,
     collect_inference_profile,
     collect_loader_outputs,
-    collect_model_profile,
     measure_latency,
     select_device,
     set_random_seed,
@@ -67,7 +67,14 @@ def run_training(
         device,
     )
     optimizer = builders.build_optimizer_component(model, experiment.train)
-    model_profile = collect_model_profile(model, val_loader, device, runtime_execution=runtime_execution)
+
+    model_profile = collect_experiment_model_profile(
+        experiment,
+        model,
+        device,
+        runtime_execution=runtime_execution,
+        dense_dim=data_stats.dense_dim,
+    )
     logger.info(
         "runtime optimization: compile_active={} amp_active={} amp_dtype={}",
         runtime_execution.compile_active,

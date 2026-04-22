@@ -143,3 +143,34 @@ def test_worker_main_applies_device_override_on_success(
     assert captured["device"] == "cuda:0"
     assert payload["status"] == "complete"
     assert payload["objective_value"] == pytest.approx(0.82)
+
+
+def test_worker_main_accepts_legacy_search_payload(test_workspace: TestWorkspace, monkeypatch: pytest.MonkeyPatch) -> None:
+    experiment_path = test_workspace.write_experiment_package()
+    experiment = load_experiment_package(experiment_path)
+    config_path = test_workspace.root / "worker_legacy_experiment.json"
+    result_path = test_workspace.root / "worker_legacy_result.json"
+    payload = serialize_experiment(experiment)
+    payload["search"]["max_end_to_end_inference_seconds"] = 180.0
+    config_path.write_text(json.dumps(payload), encoding="utf-8")
+
+    monkeypatch.setattr(
+        "taac2026.application.search.worker.execute_search_trial",
+        lambda experiment: {"status": "complete", "objective_value": 0.91},
+    )
+
+    exit_code = worker_main(
+        [
+            "--experiment",
+            str(experiment_path),
+            "--config-path",
+            str(config_path),
+            "--result-path",
+            str(result_path),
+        ]
+    )
+    result = json.loads(result_path.read_text(encoding="utf-8"))
+
+    assert exit_code == 0
+    assert result["status"] == "complete"
+    assert result["objective_value"] == pytest.approx(0.91)

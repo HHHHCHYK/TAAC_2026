@@ -5,12 +5,14 @@ from pathlib import Path
 
 import pytest
 import torch
+from torch import nn
 
 from taac2026.application.training.external_profilers import build_training_external_profiler_plan
 from taac2026.application.training.profiling import collect_inference_profile, measure_latency
 from taac2026.application.training.service import run_training
 from taac2026.domain.config import ModelConfig, TrainConfig
 from taac2026.domain.experiment import ExperimentSpec
+from taac2026.domain.features import FeatureSchema, FeatureTableSpec
 from tests.support import (
     TestWorkspace,
     build_local_data_pipeline,
@@ -43,7 +45,7 @@ def test_measure_latency_reports_rich_statistics(test_workspace: TestWorkspace, 
 
     latency = measure_latency(model, loader, "cpu", warmup_steps=0, measure_steps=2)
 
-    assert latency["profile_schema_version"] == 1
+    assert latency["profile_schema_version"] == 2
     assert latency["measured_batches"] == 2
     assert latency["measured_samples"] == 4
     assert latency["mean_latency_ms_per_sample"] == pytest.approx(10.0)
@@ -87,12 +89,13 @@ def test_collect_inference_profile_accepts_sample_count(test_workspace: TestWork
         },
     )
 
-    assert inference_profile["profile_schema_version"] == 1
+    assert inference_profile["profile_schema_version"] == 2
     assert inference_profile["val_sample_count"] == 12
     assert inference_profile["latency_observed_batches"] == 2
-    assert inference_profile["estimated_end_to_end_inference_seconds"] == pytest.approx(0.03)
-    assert inference_profile["estimated_end_to_end_inference_seconds_p50"] == pytest.approx(0.024)
-    assert inference_profile["estimated_end_to_end_inference_seconds_p95"] == pytest.approx(0.036)
+    assert inference_profile["latency_observed_samples"] == 4
+    assert "estimated_end_to_end_inference_seconds" not in inference_profile
+    assert "estimated_end_to_end_inference_seconds_p50" not in inference_profile
+    assert "estimated_end_to_end_inference_seconds_p95" not in inference_profile
 
 
 def test_build_training_external_profiler_plan_contains_uv_commands(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -209,13 +212,19 @@ def test_run_training_includes_unified_profiling_report(test_workspace: TestWork
 
     summary = run_training(experiment)
 
-    assert summary["profiling"]["schema_version"] == 1
+    assert summary["profiling"]["schema_version"] == 2
     assert summary["profiling"]["device"] == summary["profiling"]["latency"]["device"]
     assert summary["profiling"]["latency"]["mean_latency_ms_per_sample"] == summary["mean_latency_ms_per_sample"]
-    assert summary["profiling"]["model_profile"]["profile_schema_version"] == 1
-    assert summary["profiling"]["compute_profile"]["profile_schema_version"] == 1
-    assert summary["profiling"]["inference_profile"]["profile_schema_version"] == 1
+    assert summary["profiling"]["model_profile"]["profile_schema_version"] == 2
+    assert summary["profiling"]["model_profile"]["profile_scope"] == "synthetic_fixed_forward"
+    assert summary["profiling"]["model_profile"]["profile_input_kind"] == "synthetic_fixed_batch"
+    assert summary["profiling"]["compute_profile"]["profile_schema_version"] == 2
+    assert summary["profiling"]["inference_profile"]["profile_schema_version"] == 2
+    assert summary["profiling"]["model_profile"]["profiled_batches"] == 1
+    assert summary["profiling"]["model_profile"]["flops_profile_status"] == "measured"
     assert summary["profiling"]["model_profile"]["operator_summary"]["top_operations"]
+    assert "estimated_end_to_end_tflops_total" not in summary["profiling"]["compute_profile"]
+    assert summary["profiling"]["compute_profile"]["train_step_tflops"] > 0
     assert summary["profiling"]["compute_profile"]["train_operator_summary"]["top_operations"]
     assert "external_profilers" in summary["profiling"]
     assert summary["runtime_optimization"]["torch_compile"]["active"] is False
@@ -226,6 +235,80 @@ def test_run_training_includes_unified_profiling_report(test_workspace: TestWork
     script_extension = ".ps1" if os.name == "nt" else ".sh"
     assert (Path(experiment.train.output_dir) / "profiling" / f"profile_ncu{script_extension}").exists()
     assert (Path(experiment.train.output_dir) / "profiling" / f"profile_nsys{script_extension}").exists()
+
+
+def test_run_training_rejects_custom_profile_schema_without_compat_fallback(test_workspace: TestWorkspace) -> None:
+    experiment = ExperimentSpec(
+        name="profile_template_fallback",
+        data=test_workspace.data_config,
+        model=ModelConfig(name="profile_test", **test_workspace.model_kwargs),
+        train=TrainConfig(
+            seed=7,
+            epochs=1,
+            batch_size=2,
+            eval_batch_size=2,
+            num_workers=0,
+            output_dir=str(test_workspace.root / "profile_template_fallback"),
+            latency_warmup_steps=0,
+            latency_measure_steps=1,
+        ),
+        feature_schema=FeatureSchema(
+            tables=(
+                FeatureTableSpec(
+                    name="custom_tokens",
+                    family="custom",
+                    num_embeddings=8,
+                    embedding_dim=test_workspace.model_kwargs["embedding_dim"],
+                ),
+            ),
+            dense_dim=test_workspace.data_config.dense_feature_dim,
+            sequence_names=(),
+            variant="custom_profile_v1",
+            auto_sync=False,
+        ),
+        build_data_pipeline=build_local_data_pipeline,
+        build_model_component=build_local_model_component,
+        build_loss_stack=build_local_loss_stack,
+        build_optimizer_component=build_local_optimizer_component,
+    )
+
+    with pytest.raises(ValueError, match="Default data pipeline only supports the canonical TorchRec feature schema"):
+        run_training(experiment)
+
+
+def test_run_training_does_not_mask_model_profile_forward_errors(test_workspace: TestWorkspace) -> None:
+    class _GuardedModel(nn.Module):
+        def __init__(self) -> None:
+            super().__init__()
+            self.weight = nn.Parameter(torch.ones(1, dtype=torch.float32))
+
+        def forward(self, batch):
+            del batch
+            raise RuntimeError("synthetic profile forward failed")
+            return self.weight.repeat(batch.batch_size)
+
+    experiment = ExperimentSpec(
+        name="profile_forward_error",
+        data=test_workspace.data_config,
+        model=ModelConfig(name="profile_test", **test_workspace.model_kwargs),
+        train=TrainConfig(
+            seed=7,
+            epochs=1,
+            batch_size=2,
+            eval_batch_size=2,
+            num_workers=0,
+            output_dir=str(test_workspace.root / "profile_forward_error"),
+            latency_warmup_steps=0,
+            latency_measure_steps=1,
+        ),
+        build_data_pipeline=build_local_data_pipeline,
+        build_model_component=lambda data_config, model_config, dense_dim: _GuardedModel(),
+        build_loss_stack=build_local_loss_stack,
+        build_optimizer_component=build_local_optimizer_component,
+    )
+
+    with pytest.raises(RuntimeError, match="synthetic profile forward failed"):
+        run_training(experiment)
 
 
 def test_run_training_enables_cpu_bfloat16_amp(test_workspace: TestWorkspace) -> None:

@@ -7,6 +7,19 @@ from ...domain.config import DataConfig, ModelConfig, SearchConfig, TrainConfig
 from ...domain.experiment import ExperimentSpec
 
 
+LEGACY_SEARCH_KEYS = (
+    "max_end_to_end_inference_seconds",
+    "max_end_to_end_tflops_total",
+)
+
+
+def _normalize_search_payload(search_payload: dict[str, Any]) -> dict[str, Any]:
+    normalized = dict(search_payload)
+    for key in LEGACY_SEARCH_KEYS:
+        normalized.pop(key, None)
+    return normalized
+
+
 def serialize_experiment(experiment: ExperimentSpec) -> dict[str, Any]:
     return {
         "name": experiment.name,
@@ -34,7 +47,7 @@ def apply_serialized_experiment(
     experiment.data = DataConfig(**data_payload)
     experiment.model = ModelConfig(**dict(payload["model"]))
     experiment.train = TrainConfig(**train_payload)
-    experiment.search = SearchConfig(**dict(payload["search"]))
+    experiment.search = SearchConfig(**_normalize_search_payload(dict(payload["search"])))
     experiment.switches = dict(payload.get("switches") or {})
     experiment.refresh_feature_schema()
     return experiment

@@ -57,7 +57,7 @@ def main(argv: list[str] | None = None) -> int:
             ("pr_auc", f"{float(summary['metrics'].get('pr_auc', 0.0)):.6f}"),
             ("mean_latency_ms_per_sample", f"{float(summary['mean_latency_ms_per_sample']):.4f}"),
             ("parameter_size_mb", f"{float(summary['model_profile']['parameter_size_mb']):.2f}"),
-            ("estimated_end_to_end_tflops_total", f"{float(summary['compute_profile']['estimated_end_to_end_tflops_total']):.4f}"),
+            ("train_step_tflops", f"{float(summary['compute_profile']['train_step_tflops']):.4f}"),
             ("ncu_available", str(summary["profiling"]["external_profilers"]["tools"]["ncu"]["available"])),
             ("nsys_available", str(summary["profiling"]["external_profilers"]["tools"]["nsys"]["available"])),
         ],

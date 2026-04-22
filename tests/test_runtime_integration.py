@@ -92,15 +92,19 @@ def test_experiment_package_runs_end_to_end_with_visualization_switch(test_works
     assert "model_profile" in summary
     assert "inference_profile" in summary
     assert "compute_profile" in summary
-    assert summary["profiling"]["schema_version"] == 1
+    assert summary["profiling"]["schema_version"] == 2
     assert summary["profiling"]["latency"]["mean_latency_ms_per_sample"] == summary["mean_latency_ms_per_sample"]
     assert summary["profiling"]["model_profile"]["parameter_size_mb"] == summary["model_profile"]["parameter_size_mb"]
+    assert summary["model_profile"]["profile_scope"] == "synthetic_fixed_forward"
+    assert summary["model_profile"]["profile_input_kind"] == "synthetic_fixed_batch"
     assert "external_profilers" in summary["profiling"]
     assert summary["runtime_optimization"]["torch_compile"]["requested"] is False
     assert payload["runtime_optimization"]["amp"]["requested"] is False
     assert summary["model_profile"]["parameter_size_mb"] > 0
-    assert summary["inference_profile"]["estimated_end_to_end_inference_seconds"] >= 0
-    assert summary["compute_profile"]["estimated_end_to_end_tflops_total"] > 0
+    assert summary["inference_profile"]["val_sample_count"] > 0
+    assert "estimated_end_to_end_inference_seconds" not in summary["inference_profile"]
+    assert "estimated_end_to_end_tflops_total" not in summary["compute_profile"]
+    assert summary["compute_profile"]["train_step_tflops"] > 0
     assert (Path(experiment.train.output_dir) / "summary.json").exists()
     assert (Path(experiment.train.output_dir) / "training_curves.json").exists()
     assert (Path(experiment.train.output_dir) / "training_curves.png").exists()

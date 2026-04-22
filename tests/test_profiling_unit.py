@@ -5,11 +5,13 @@ from pathlib import Path
 import pytest
 
 from taac2026.application.training.profiling import (
+    build_synthetic_profile_batch,
     collect_loader_outputs,
-    collect_model_profile,
+    collect_synthetic_model_profile,
     measure_latency,
 )
 from taac2026.domain.config import ModelConfig, TrainConfig
+from taac2026.domain.features import FeatureSchema, FeatureTableSpec
 from tests.support import (
     TestWorkspace,
     build_local_data_pipeline,
@@ -76,13 +78,73 @@ def test_measure_latency_zero_measure_steps_profiles_all_remaining_batches(
     assert latency["profiled_batches"] == 3
 
 
-def test_collect_model_profile_handles_empty_loader(test_workspace: TestWorkspace) -> None:
-    model, _ = _build_profile_model_and_batch(test_workspace)
+def test_build_synthetic_profile_batch_uses_fixed_shapes(test_workspace: TestWorkspace) -> None:
+    model_config = ModelConfig(name="profile_test", **test_workspace.model_kwargs)
 
-    profile = collect_model_profile(model, [], "cpu")
+    batch = build_synthetic_profile_batch(test_workspace.data_config, model_config, batch_size=1)
 
-    assert profile["profile_batch_size"] == 0
-    assert profile["flops_per_batch"] == pytest.approx(0.0)
-    assert profile["profiled_wall_time_ms"] == pytest.approx(0.0)
-    assert profile["operator_summary"]["operator_count"] == 0
-    assert profile["operator_summary"]["top_operations"] == []
+    assert batch.batch_size == 1
+    assert tuple(batch.dense_features.shape) == (1, test_workspace.data_config.dense_feature_dim)
+    assert batch.sparse_features is not None
+    assert batch.sequence_features is not None
+
+
+def test_build_synthetic_profile_batch_supports_empty_sequence_names(test_workspace: TestWorkspace) -> None:
+    model_config = ModelConfig(name="profile_test", **test_workspace.model_kwargs)
+    data_config = test_workspace.data_config
+    data_config.sequence_names = ()
+
+    batch = build_synthetic_profile_batch(data_config, model_config, batch_size=1)
+
+    assert batch.batch_size == 1
+    assert batch.sparse_features is not None
+    assert batch.sequence_features is not None
+
+
+def test_build_synthetic_profile_batch_rejects_custom_feature_schema(test_workspace: TestWorkspace) -> None:
+    model_config = ModelConfig(name="profile_test", **test_workspace.model_kwargs)
+    feature_schema = FeatureSchema(
+        tables=(
+            FeatureTableSpec(
+                name="custom_tokens",
+                family="custom",
+                num_embeddings=8,
+                embedding_dim=test_workspace.model_kwargs["embedding_dim"],
+            ),
+        ),
+        dense_dim=test_workspace.data_config.dense_feature_dim,
+        sequence_names=(),
+        variant="custom_profile_v1",
+        auto_sync=False,
+    )
+
+    with pytest.raises(ValueError, match="Default data pipeline only supports the canonical TorchRec feature schema"):
+        build_synthetic_profile_batch(
+            test_workspace.data_config,
+            model_config,
+            feature_schema=feature_schema,
+            batch_size=1,
+        )
+
+
+def test_collect_synthetic_model_profile_uses_fixed_fake_batch(test_workspace: TestWorkspace) -> None:
+    model_config = ModelConfig(name="profile_test", **test_workspace.model_kwargs)
+    _, _, data_stats = build_local_data_pipeline(
+        test_workspace.data_config,
+        model_config,
+        TrainConfig(batch_size=2, eval_batch_size=2, num_workers=0),
+    )
+    model = build_local_model_component(
+        test_workspace.data_config,
+        model_config,
+        data_stats.dense_dim,
+    )
+
+    profile = collect_synthetic_model_profile(model, test_workspace.data_config, model_config, "cpu")
+
+    assert profile["profile_scope"] == "synthetic_fixed_forward"
+    assert profile["profile_input_kind"] == "synthetic_fixed_batch"
+    assert profile["profiled_batches"] == 1
+    assert profile["selected_batch_index"] == 0
+    assert profile["profile_batch_size"] == 1
+    assert profile["flops_profile_status"] == "measured"

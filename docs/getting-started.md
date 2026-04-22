@@ -122,7 +122,9 @@ uv run taac-search --experiment config/baseline --trials 20
 搜索默认约束：
 
 - 模型参数量 ≤ 3 GiB
-- 验证集端到端推理总时长 ≤ 180 秒
+- 默认不启用模型单样本前向计算量上限
+
+如需按模型单样本前向计算量过滤 trial，可追加 `--max-model-tflops-per-sample <value>`。
 
 → 详细搜索配置见 [超参数搜索](guide/search.md)
 

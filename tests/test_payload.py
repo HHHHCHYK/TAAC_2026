@@ -50,6 +50,17 @@ def test_apply_serialized_experiment_rejects_unknown_fields(test_workspace: Test
         apply_serialized_experiment(experiment, payload)
 
 
+def test_apply_serialized_experiment_ignores_legacy_search_budget_fields(test_workspace: TestWorkspace) -> None:
+    experiment = load_experiment_package(test_workspace.write_experiment_package())
+    payload = serialize_experiment(experiment)
+    payload["search"]["max_end_to_end_inference_seconds"] = 180.0
+    payload["search"]["max_end_to_end_tflops_total"] = 42.0
+
+    restored = apply_serialized_experiment(experiment, payload)
+
+    assert restored.search.max_model_tflops_per_sample is None
+
+
 def test_load_experiment_package_requires_experiment_symbol(tmp_path: Path) -> None:
     package_path = tmp_path / "missing_experiment"
     package_path.mkdir()
