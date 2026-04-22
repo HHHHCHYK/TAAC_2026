@@ -136,29 +136,29 @@ These paths remain ephemeral and should not be committed:
 site/
 ```
 
-## PR 工作流
+## PR Workflow
 
-### 提交 & 推送后必须主动拉起 Copilot 评审
+### Explicitly request Copilot review after commit and push
 
-GitHub Copilot PR review **不会**自动触发——需要通过 MCP 工具主动请求：
+GitHub Copilot PR review **does not** trigger automatically. Request it explicitly through the MCP tool:
 
 ```
 mcp_github_request_copilot_review(owner, repo, pullNumber)
 ```
 
-完整流程：
+Full flow:
 
-1. `git add -A && git commit -m "..."` — 提交变更
-2. `git push origin <branch>` — 推送到远程
-3. **主动调用** `mcp_github_request_copilot_review` — 拉起 Copilot 评审
-4. 通过 `mcp_github_pull_request_read(method="get_reviews")` 轮询评审结果
-5. 通过 `mcp_github_pull_request_read(method="get_review_comments")` 读取评审意见
-6. 修复所有未 resolved 的评论后重复步骤 1-5，直到评审无新意见
+1. `git add -A && git commit -m "..."` — Commit the changes
+2. `git push origin <branch>` — Push to the remote
+3. **Explicitly call** `mcp_github_request_copilot_review` — request Copilot review
+4. Poll the review status via `mcp_github_pull_request_read(method="get_reviews")`
+5. Read review feedback via `mcp_github_pull_request_read(method="get_review_comments")`
+6. After fixing all unresolved comments, repeat steps 1-5 until the review has no new feedback
 
-### CI 检查
+### CI Checks
 
-推送后 CI 会自动运行，通过 `mcp_github_pull_request_read(method="get_check_runs")` 查看状态。
-所有 check_runs 必须 `conclusion: "success"` 才可合并。
+CI runs automatically after pushing. Check its status via `mcp_github_pull_request_read(method="get_check_runs")`.
+All `check_runs` must have `conclusion: "success"` before merging.
 
 ## Reference
 
