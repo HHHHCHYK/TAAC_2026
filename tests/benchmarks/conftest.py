@@ -2,13 +2,12 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
+from collections.abc import Callable
 
 import pytest
 import torch
 from torch.utils.benchmark import Timer
-
-from tests.support import TestWorkspace, create_test_workspace
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -31,11 +30,6 @@ def _percentile(values: list[float], percentile: float) -> float:
 @pytest.fixture
 def benchmark_device() -> torch.device:
     return torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
-
-@pytest.fixture
-def benchmark_workspace(tmp_path_factory: pytest.TempPathFactory) -> TestWorkspace:
-    return create_test_workspace(tmp_path_factory.mktemp("bench_workspace"))
 
 
 @pytest.fixture

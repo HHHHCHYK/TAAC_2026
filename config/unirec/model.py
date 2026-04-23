@@ -349,17 +349,19 @@ class UniRecModel(nn.Module):
 
 		target_token = self.target_fusion(torch.cat([user_pool, item_pool, user_pool * item_pool], dim=-1)).unsqueeze(1)
 
-		sequence_parts = [feature_tokens] + per_branch_tokens
+		sequence_parts = [feature_tokens, *per_branch_tokens]
 		special_segment_id = self.sequence_count + 1
 		segment_ids = [
 			torch.zeros(batch.batch_size, self.n_feature_tokens, dtype=torch.long, device=feature_tokens.device),
-		] + [
-			torch.full((batch.batch_size, per_branch_tokens[i].shape[1]), i + 1, dtype=torch.long, device=feature_tokens.device)
-			for i in range(self.sequence_count)
+			*(
+				torch.full((batch.batch_size, per_branch_tokens[i].shape[1]), i + 1, dtype=torch.long, device=feature_tokens.device)
+				for i in range(self.sequence_count)
+			),
 		]
 		padding_parts = [
 			torch.ones(batch.batch_size, self.n_feature_tokens, dtype=torch.bool, device=feature_tokens.device),
-		] + list(per_branch_mask)
+			*per_branch_mask,
+		]
 
 		if self.mot is not None and self.mot_projection is not None:
 			mot_token = self.mot_projection(

@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 """CLI for dataset exploratory analysis.
 
 Usage:
@@ -7,6 +5,8 @@ Usage:
     uv run taac-dataset-eda --dataset path/to/data  # custom path
     uv run taac-dataset-eda --max-rows 5000         # limit rows scanned
 """
+
+from __future__ import annotations
 
 import argparse
 import json

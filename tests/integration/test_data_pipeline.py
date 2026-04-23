@@ -307,8 +307,8 @@ def test_streaming_pipeline_rejects_unsupported_feature_schema_tables(test_works
     feature_schema = replace(
         feature_schema,
         auto_sync=False,
-        tables=feature_schema.tables
-        + (
+        tables=(
+            *feature_schema.tables,
             FeatureTableSpec(
                 name="bonus_tokens",
                 family="bonus",

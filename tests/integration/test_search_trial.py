@@ -176,7 +176,6 @@ def test_profile_trial_budget_does_not_mask_forward_errors(test_workspace: TestW
         def forward(self, batch) -> torch.Tensor:
             del batch
             raise RuntimeError("synthetic profile forward failed")
-            return self.weight.repeat(batch.batch_size)
 
     experiment = ExperimentSpec(
         name="profile_forward_error",

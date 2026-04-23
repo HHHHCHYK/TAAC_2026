@@ -17,7 +17,6 @@ from taac2026.infrastructure.nn.hstu import (
 )
 
 from .data import TIME_GAP_BUCKET_COUNT
-from .utils import masked_mean
 
 
 SPARSE_TABLE_NAMES = (

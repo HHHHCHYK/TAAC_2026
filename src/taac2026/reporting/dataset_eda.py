@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 """Reusable dataset analysis primitives for TAAC 2026.
 
 This module provides composable functions that inspect a loaded dataset and
@@ -8,18 +6,21 @@ summaries and produce JSON-serialisable dicts for interactive visualisation.
 Both layers are designed for use by CLI scripts *and* notebook cells.
 """
 
+from __future__ import annotations
+
 import json
 import math
 from collections import Counter, defaultdict
 from dataclasses import dataclass, field
-from typing import Any, Iterable, Sequence
+from typing import Any
+from collections.abc import Iterable, Sequence
 
 import numpy as np
 
 from taac2026.domain.config import DEFAULT_SEQUENCE_NAMES
 
 # ---------------------------------------------------------------------------
-# Constants – column naming conventions mirrored from tests/support.py
+# Constants - column naming conventions mirrored from tests/support.py
 # ---------------------------------------------------------------------------
 
 _USER_INT_PREFIX = "user_int_feats_"
@@ -31,9 +32,9 @@ _DOMAIN_SEQ_PREFIXES: dict[str, str] = {
 }
 
 # ---------------------------------------------------------------------------
-# Caps – prevent OOM / excessive compute during streaming scans
+# Caps - prevent OOM / excessive compute during streaming scans
 # ---------------------------------------------------------------------------
-_MAX_AUC_PAIRS = 50_000          # max pos×neg pairs in single-feature AUC
+_MAX_AUC_PAIRS = 50_000          # max pos x neg pairs in single-feature AUC
 _MAX_AUC_PER_COL = 50_000        # max (value, label) samples per column for AUC
 _MAX_DENSE_VALUES = 100_000      # max dense-feature values collected per column
 _MAX_MISSING_VECTORS = 50_000    # max per-row missing-set vectors kept
@@ -120,7 +121,7 @@ class ColumnStats:
 
 
 # Prefixes whose columns should skip unique-value tracking (dense vectors, sequences)
-_SKIP_UNIQUE_PREFIXES: tuple[str, ...] = (_USER_DENSE_PREFIX,) + tuple(_DOMAIN_SEQ_PREFIXES.values())
+_SKIP_UNIQUE_PREFIXES: tuple[str, ...] = (_USER_DENSE_PREFIX, *_DOMAIN_SEQ_PREFIXES.values())
 # High-cardinality identifier/time columns that should always skip unique tracking
 _SKIP_UNIQUE_EXACT: frozenset[str] = frozenset({"user_id", "item_id", "timestamp", "label_time"})
 
@@ -406,7 +407,7 @@ def echarts_sequence_lengths(seq_stats: dict[str, SequenceLengthStats]) -> dict[
                 ],
                 "areaStyle": {"opacity": 0.08},
             }
-            for i, (d, s) in enumerate(zip(domains, summaries))
+            for d, s in zip(domains, summaries, strict=True)
             if s["count"] > 0
         ],
     }
@@ -566,10 +567,10 @@ def echarts_edition_comparison(
             int(seq_max),
             int(primary_mean),
         ]
-        subtitle = "TAAC 2025 为固定对比基线；TAAC 2026 指标根据当前扫描结果动态生成"
+        subtitle = "TAAC 2025 为固定对比基线; TAAC 2026 指标根据当前扫描结果动态生成"
     else:
         taac2026 = [56, 14, 4, 120, 3951, 1099]  # static fallback
-        subtitle = "TAAC 2025 为固定对比基线；TAAC 2026 为静态示例值"
+        subtitle = "TAAC 2025 为固定对比基线; TAAC 2026 为静态示例值"
 
     all_values = [*taac2025, *taac2026]
     use_log = all(v > 0 for v in all_values)
@@ -621,7 +622,7 @@ def echarts_seq_length_summary(seq_stats: dict[str, SequenceLengthStats]) -> dic
         {"name": "max", "max": radar_max},
     ]
     radar_data = []
-    for i, (d, s) in enumerate(zip(domains, summaries)):
+    for d, s in zip(domains, summaries, strict=True):
         if s["count"] == 0:
             continue
         radar_data.append({
@@ -632,7 +633,7 @@ def echarts_seq_length_summary(seq_stats: dict[str, SequenceLengthStats]) -> dic
         })
     return {
         "tooltip": {},
-        "legend": {"data": [d for d, s in zip(domains, summaries) if s["count"] > 0], "top": 0},
+        "legend": {"data": [d for d, s in zip(domains, summaries, strict=True) if s["count"] > 0], "top": 0},
         "radar": {"indicator": indicators},
         "series": [{
             "type": "radar",
@@ -1178,8 +1179,8 @@ def echarts_cross_domain_overlap(user_stats: UserStats) -> dict[str, Any]:
     domains = overlap["domains"]
     matrix = overlap["overlap_matrix"]
     data = []
-    for i, d1 in enumerate(domains):
-        for j, d2 in enumerate(domains):
+    for i, _ in enumerate(domains):
+        for j, _ in enumerate(domains):
             data.append([i, j, matrix[i][j]])
     max_val = max((d[2] for d in data), default=1)
     return {
@@ -1259,7 +1260,7 @@ def echarts_dense_distributions(dense_stats: DenseFeatureStats) -> dict[str, Any
     if not cols:
         return {"tooltip": {}, "series": []}
     summaries = [dense_stats.distributions[c] for c in cols]
-    valid = [(c, s) for c, s in zip(cols, summaries) if s.get("finite_count", 0) > 0]
+    valid = [(c, s) for c, s in zip(cols, summaries, strict=True) if s.get("finite_count", 0) > 0]
     if not valid:
         return {"tooltip": {}, "series": []}
 
@@ -1335,7 +1336,7 @@ def echarts_co_missing(missing_patterns: MissingPatternStats, *, top_n: int = 10
         return {"tooltip": {}, "series": []}
     pairs_rev = list(reversed(pairs))
     names = [
-        f"{p['feature_a'].replace('user_int_feats_', 'u_').replace('item_int_feats_', 'i_')} × "
+        f"{p['feature_a'].replace('user_int_feats_', 'u_').replace('item_int_feats_', 'i_')} x "
         f"{p['feature_b'].replace('user_int_feats_', 'u_').replace('item_int_feats_', 'i_')}"
         for p in pairs_rev
     ]

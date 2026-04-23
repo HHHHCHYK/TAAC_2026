@@ -10,7 +10,6 @@ from taac2026.domain.features import build_default_feature_schema
 from taac2026.domain.types import BatchTensors
 from taac2026.infrastructure.nn.embedding import TorchRecEmbeddingBagAdapter
 from taac2026.infrastructure.nn.heads import ClassificationHead
-from taac2026.infrastructure.nn.pooling import masked_mean
 from taac2026.infrastructure.nn.transformer import TaacMixedCausalBlock
 
 from .data import TIME_GAP_BUCKET_COUNT

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import os
 from pathlib import Path
 
 from ...infrastructure.io.files import create_temporary_path, ensure_dir
@@ -80,8 +79,8 @@ def write_training_curve_artifacts(
             val_aucs=val_aucs,
             best_epoch=best_epoch,
         )
-        os.replace(staged_json, json_target)
-        os.replace(staged_plot, plot_target)
+        staged_json.replace(json_target)
+        staged_plot.replace(plot_target)
     except Exception:
         staged_json.unlink(missing_ok=True)
         staged_plot.unlink(missing_ok=True)

@@ -64,9 +64,10 @@ def test_build_row_has_no_unexpected_column_prefixes() -> None:
     """Catch stale columns that no longer match the contract."""
     row = build_row(0, 1_770_000_000, True, "u1", 101)
     known_prefixes = (
-        tuple(EXPECTED_SCALAR_COLUMNS)
-        + (EXPECTED_USER_INT_PREFIX, EXPECTED_ITEM_INT_PREFIX)
-        + tuple(EXPECTED_DOMAIN_PREFIXES.values())
+        *EXPECTED_SCALAR_COLUMNS,
+        EXPECTED_USER_INT_PREFIX,
+        EXPECTED_ITEM_INT_PREFIX,
+        *EXPECTED_DOMAIN_PREFIXES.values(),
     )
     for col in row:
         assert any(col == s or col.startswith(s) for s in known_prefixes), (

@@ -176,4 +176,4 @@ def main(argv: list[str] | None = None) -> int:
     return 0
 
 
-__all__ = ["main", "parse_args", "_build_single_summary_rows", "_format_quantization_summary"]
+__all__ = ["_build_single_summary_rows", "_format_quantization_summary", "main", "parse_args"]

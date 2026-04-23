@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import logging
 from functools import lru_cache
-from typing import TYPE_CHECKING, Iterable
+from typing import TYPE_CHECKING
+from collections.abc import Iterable
 
 from torch import nn
 
@@ -152,8 +153,8 @@ class TorchRecEmbeddingCollectionAdapter(nn.Module):
 
 
 __all__ = [
-    "TorchRecEmbeddingCollectionAdapter",
     "TorchRecEmbeddingBagAdapter",
-    "build_embedding_configs",
+    "TorchRecEmbeddingCollectionAdapter",
     "build_embedding_bag_configs",
+    "build_embedding_configs",
 ]

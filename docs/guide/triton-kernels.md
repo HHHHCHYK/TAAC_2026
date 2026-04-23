@@ -13,7 +13,7 @@ icon: lucide/cpu
 - `src/taac2026/infrastructure/nn/triton_ffn.py` 提供共享 FFN activation / SwiGLU 路径
 - `src/taac2026/infrastructure/nn/hstu.py` 的 SiLU attention 会复用同一套共享后端
 - `src/taac2026/infrastructure/nn/norms.py` 会在 CUDA 上自动走 Triton RMSNorm，在 CPU 上保留参考实现
-- `tests/test_triton_kernels.py` 和 `tests/test_transformer_blocks.py` 已覆盖 kernel 正确性与共享 block 集成
+- `tests/gpu/test_triton_kernels.py` 和 `tests/unit/test_transformer_blocks.py` 已覆盖 kernel 正确性与共享 block 集成
 
 这意味着后续 kernel 扩展不需要再从零搭脚手架，可以直接沿用相同的模块组织、测试模式和 GPU 标记约定。
 
@@ -29,7 +29,7 @@ icon: lucide/cpu
 
 1. 一个共享模块，放在 `src/taac2026/infrastructure/nn/`
 2. 一个纯 PyTorch 参考实现，用于数值对齐
-3. 一个 GPU 测试，放在 `tests/test_triton_kernels.py` 或新的 `gpu` 分类测试文件里
+3. 一个 GPU 测试，放在 `tests/gpu/test_triton_kernels.py` 或新的 `tests/gpu/` 分类测试文件里
 
 如果 kernel 会被共享 block 直接消费，再补一个 block 级测试，确保 mask、causal 路径和 fallback 语义没有偏移。
 
@@ -40,20 +40,20 @@ icon: lucide/cpu
 uv sync --locked
 
 # 运行 Triton kernel 正确性测试
-uv run pytest tests/test_triton_kernels.py -q
+uv run pytest tests/gpu/test_triton_kernels.py -q
 
 # 运行共享 transformer / HSTU 集成测试
-uv run pytest tests/test_transformer_blocks.py -q
+uv run pytest tests/unit/test_transformer_blocks.py -q
 ```
 
 如果你要验证 TE 后端而不是 Triton 路径，先补齐可选依赖：
 
 ```bash
 uv sync --locked --extra te --no-build-isolation-package transformer-engine
-uv run python scripts/verify_gpu_env.py --json
+uv run pytest tests/gpu/test_gpu_environment.py -q
 ```
 
-`verify_gpu_env.py` 现在会额外报告 Compute Capability、推荐精度、以及 TE 的 BF16 / FP8 / MXFP8 / NVFP4 可用性，方便在切换 backend 前先确认机器能力。
+`tests/gpu/test_gpu_environment.py` 会额外校验 Compute Capability、推荐精度、以及 TE 的 BF16 / FP8 / MXFP8 / NVFP4 可用性，方便在切换 backend 前先确认机器能力。
 
 如果你只改文档站，不需要同步 Triton 本体依赖，可以继续使用：
 

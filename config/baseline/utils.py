@@ -1,11 +1,10 @@
-from __future__ import annotations
-
 """Reusable loss and optimizer wiring for reference-style experiment packages."""
+
+from __future__ import annotations
 
 import torch
 import torch.nn.functional as F
 from torch import nn
-from taac2026.infrastructure.nn.pooling import masked_mean
 
 
 class DisabledAuxiliaryLoss:

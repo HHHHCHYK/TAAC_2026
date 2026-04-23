@@ -78,7 +78,7 @@ def test_prepare_runtime_execution_compile_failure_raises(monkeypatch: pytest.Mo
 
     monkeypatch.setattr(torch, "compile", fake_compile)
 
-    with pytest.raises(RuntimeError, match="torch.compile failed"):
+    with pytest.raises(RuntimeError, match=r"torch\.compile failed"):
         prepare_runtime_execution(model, TrainConfig(enable_torch_compile=True), "cpu")
 
 

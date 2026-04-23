@@ -584,7 +584,7 @@ def _profiler_activities_for(device: torch.device) -> list[ProfilerActivity]:
 
 def _loader_num_batches(loader) -> int:
     try:
-        return int(len(loader))
+        return len(loader)
     except TypeError:
         return 0
 
@@ -727,12 +727,12 @@ def collect_compute_profile(
 __all__ = [
     "PROFILE_SCHEMA_VERSION",
     "build_profiling_report",
+    "build_synthetic_profile_batch",
     "collect_compute_profile",
     "collect_inference_profile",
     "collect_loader_outputs",
+    "collect_synthetic_model_profile",
     "measure_latency",
     "select_device",
     "set_random_seed",
-    "build_synthetic_profile_batch",
-    "collect_synthetic_model_profile",
 ]

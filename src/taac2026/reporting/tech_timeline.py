@@ -596,7 +596,7 @@ def to_echarts(graph: TimelineGraph) -> dict[str, Any]:
         y_idx = BRANCH_INDEX.get(n.branch, 0)
         node_key = n.s2_id or n.name
         node_key_by_name[n.name] = node_key
-        # Spread initial positions across a 800×500 canvas
+        # Spread initial positions across a 800x500 canvas
         x_init = (n.year - min_year) / yr_span * 700 + 50
         y_init = y_idx * 70 + 40
 

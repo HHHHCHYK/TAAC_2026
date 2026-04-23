@@ -12,7 +12,7 @@ concurrency:
 
 jobs:
   benchmark:
-    name: Performance Benchmarks
+    name: GPU Performance Benchmarks
     runs-on: [self-hosted, gpu, linux]
     permissions:
       contents: write
@@ -45,7 +45,7 @@ jobs:
       - name: Run benchmark suite
         run: |
           rm -rf .benchmarks outputs/performance benchmark-result.json
-          uv run pytest tests/benchmarks -o python_files='bench_*.py' --benchmark-json=benchmark-result.json -v
+          uv run pytest tests/benchmarks/gpu -m benchmark_gpu --benchmark-json=benchmark-result.json -v
 
       - name: Store benchmark result
         uses: benchmark-action/github-action-benchmark@v1
@@ -75,21 +75,18 @@ jobs:
           import os
           from pathlib import Path
 
-          performance_dir = Path("outputs/performance")
-          embedding_base = json.loads((performance_dir / "embedding_lookup.json").read_text(encoding="utf-8"))
-          embedding_torchrec = json.loads((performance_dir / "embedding_lookup_torchrec.json").read_text(encoding="utf-8"))
-          attention_base = json.loads((performance_dir / "attention_forward.json").read_text(encoding="utf-8"))
-          attention_triton = json.loads((performance_dir / "attention_forward_triton.json").read_text(encoding="utf-8"))
+          from tests import conftest
 
-          embedding_speedup = embedding_torchrec["throughput"] / embedding_base["throughput"]
-          attention_latency_ratio = attention_triton["median_ms"] / attention_base["median_ms"]
+          performance_dir = Path("outputs/performance")
+          counts = conftest.count_classified_test_files()
+          payloads = sorted(path.name for path in performance_dir.glob("*.json"))
           trace = {
               "store_result_enabled": True,
               "alert_threshold_percent": 115,
               "comment_on_alert": True,
               "fail_on_alert": True,
-              "embedding_throughput_speedup": embedding_speedup,
-              "attention_latency_ratio": attention_latency_ratio,
+            "benchmark_gpu_files": counts["benchmark_gpu"],
+            "performance_payloads": payloads,
               "artifacts": [
                   "benchmark-result.json",
                   "outputs/performance",
@@ -98,15 +95,24 @@ jobs:
           }
           Path("benchmark-trace.json").write_text(json.dumps(trace, indent=2, sort_keys=True), encoding="utf-8")
 
+          embedding_torchrec = None
+          attention_triton = None
+          embedding_path = performance_dir / "embedding_lookup_torchrec.json"
+          attention_path = performance_dir / "attention_forward_triton.json"
+          if embedding_path.exists():
+            embedding_torchrec = json.loads(embedding_path.read_text(encoding="utf-8"))
+          if attention_path.exists():
+            attention_triton = json.loads(attention_path.read_text(encoding="utf-8"))
+
           with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as handle:
               handle.write("## Benchmark evidence\n\n")
               handle.write(f"- store benchmark history: {trace['store_result_enabled']} (alert threshold 115%, comment-on-alert=true, fail-on-alert=true)\\n")
-              handle.write(
-                  f"- embedding throughput: {embedding_base['throughput']:.2f} -> {embedding_torchrec['throughput']:.2f} lookups/s ({embedding_speedup:.2f}x)\\n"
-              )
-              handle.write(
-                  f"- attention median latency: {attention_base['median_ms']:.4f} ms -> {attention_triton['median_ms']:.4f} ms ({attention_latency_ratio:.3f}x baseline)\\n"
-              )
+            handle.write(f"- executed marker: benchmark_gpu ({counts['benchmark_gpu']} files) on the self-hosted GPU runner\\n")
+            if embedding_torchrec is not None:
+              handle.write(f"- TorchRec embedding throughput: {embedding_torchrec['throughput']:.2f} lookups/s\\n")
+            if attention_triton is not None:
+              handle.write(f"- Triton attention median latency: {attention_triton['median_ms']:.4f} ms\\n")
+            handle.write(f"- performance payloads: {', '.join(payloads) if payloads else 'none'}\\n")
               handle.write("- artifacts: benchmark-result.json, outputs/performance/, docs/assets/figures/benchmarks/\\n")
           PY
 

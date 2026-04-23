@@ -43,7 +43,7 @@ def replace_file(path: str | Path, writer: Callable[[Path], None], *, suffix: st
     staged_path = create_temporary_path(target, suffix=suffix)
     try:
         writer(staged_path)
-        os.replace(staged_path, target)
+        staged_path.replace(target)
     except Exception:
         staged_path.unlink(missing_ok=True)
         raise

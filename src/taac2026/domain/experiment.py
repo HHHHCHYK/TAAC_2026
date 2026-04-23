@@ -2,7 +2,8 @@ from __future__ import annotations
 
 from copy import deepcopy
 from dataclasses import dataclass, field
-from typing import Any, Callable
+from typing import Any
+from collections.abc import Callable
 
 from .config import DataConfig, ModelConfig, SearchConfig, TrainConfig
 from .features import FeatureSchema, sync_feature_schema
@@ -27,7 +28,7 @@ class ExperimentSpec:
     build_optimizer_component: Callable[..., Any] | None = None
     switches: dict[str, bool] = field(default_factory=dict)
     search: SearchConfig = field(default_factory=SearchConfig)
-    build_search_experiment: Callable[["ExperimentSpec", Any], "ExperimentSpec"] | None = None
+    build_search_experiment: Callable[[ExperimentSpec, Any], ExperimentSpec] | None = None
 
     def __post_init__(self) -> None:
         if not callable(self.build_model_component):
@@ -37,7 +38,7 @@ class ExperimentSpec:
     def refresh_feature_schema(self) -> None:
         self.feature_schema = sync_feature_schema(self.feature_schema, self.data, self.model)
 
-    def clone(self) -> "ExperimentSpec":
+    def clone(self) -> ExperimentSpec:
         return ExperimentSpec(
             name=self.name,
             data=deepcopy(self.data),
@@ -53,7 +54,7 @@ class ExperimentSpec:
             build_search_experiment=self.build_search_experiment,
         )
 
-    def derive(self, **updates: Any) -> "ExperimentSpec":
+    def derive(self, **updates: Any) -> ExperimentSpec:
         experiment = self.clone()
         for key, value in updates.items():
             if not hasattr(experiment, key):

@@ -285,7 +285,6 @@ def test_run_training_does_not_mask_model_profile_forward_errors(test_workspace:
         def forward(self, batch):
             del batch
             raise RuntimeError("synthetic profile forward failed")
-            return self.weight.repeat(batch.batch_size)
 
     experiment = ExperimentSpec(
         name="profile_forward_error",

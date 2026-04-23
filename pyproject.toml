@@ -75,12 +75,25 @@ where = ["src"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+python_files = ["test_*.py", "bench_*.py"]
 addopts = "-ra --strict-markers"
 markers = [
 	"unit: fast unit tests for pure logic and local contracts",
 	"integration: higher-level workflow tests across module boundaries",
 	"gpu: tests that require a CUDA GPU (skipped automatically when unavailable)",
+	"benchmark_cpu: CPU-safe benchmark tests that run in automatic CI",
+	"benchmark_gpu: GPU benchmark tests that run only in manual benchmark workflows",
 ]
+
+[tool.ruff]
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F"]
+extend-select = ["B", "UP", "PTH", "RUF"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/gpu_env_support.py" = ["E402"]
 
 [tool.coverage.run]
 branch = true

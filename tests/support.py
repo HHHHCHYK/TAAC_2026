@@ -11,8 +11,7 @@ import torch
 from torch import nn
 
 from config.baseline.data import load_dataloaders
-from taac2026.domain.config import DataConfig, ModelConfig, TrainConfig
-from taac2026.domain.experiment import ExperimentSpec
+from taac2026.domain.config import DataConfig, ModelConfig
 from taac2026.domain.types import BatchTensors
 
 
@@ -550,11 +549,11 @@ def prepare_experiment(experiment, test_workspace: TestWorkspace):
 
 
 __all__ = [
-    "DisabledAuxiliaryLoss",
     "EXPECTED_DOMAIN_PREFIXES",
     "EXPECTED_ITEM_INT_PREFIX",
     "EXPECTED_SCALAR_COLUMNS",
     "EXPECTED_USER_INT_PREFIX",
+    "DisabledAuxiliaryLoss",
     "TestWorkspace",
     "TinyExperimentModel",
     "build_edge_case_rows",

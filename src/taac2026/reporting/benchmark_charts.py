@@ -3,7 +3,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 import re
-from typing import Any, Iterable
+from typing import Any
+from collections.abc import Iterable
 
 from taac2026.infrastructure.io.files import write_json
 

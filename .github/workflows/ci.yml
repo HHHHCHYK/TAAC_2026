@@ -29,8 +29,29 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  style:
+    name: Style & Policy
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+        with:
+          enable-cache: true
+
+      - name: Run Ruff style checks
+        run: uv run --with ruff ruff check .
+
   test:
-    name: CPU Unit & Integration
+    name: CPU Unit Tests
     runs-on: ubuntu-latest
 
     steps:
@@ -50,8 +71,8 @@ jobs:
       - name: Sync project environment
         run: uv sync --locked
 
-      - name: Run torch lint rules
-        run: uv run python scripts/lint_torch.py
+      - name: Run repository policy checks
+        run: uv run pytest tests/unit/test_repo_policy.py -q
 
       - name: Run unit tests with coverage
         run: uv run --with coverage coverage run --data-file=.coverage.cpu -m pytest -m unit -v
@@ -62,10 +83,14 @@ jobs:
           import os
           from tests import conftest
 
+          counts = conftest.count_classified_test_files()
           with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as handle:
               handle.write("## CPU test routing\n\n")
-              handle.write(f"- executed on ubuntu-latest: unit ({len(conftest.UNIT_TEST_FILES)} files)\\n")
-              handle.write(f"- delegated to GPU runner: integration ({len(conftest.INTEGRATION_TEST_FILES)} files), gpu ({len(conftest.GPU_TEST_FILES)} files)\\n")
+              handle.write(f"- executed on ubuntu-latest: unit ({counts['unit']} files)\\n")
+              handle.write(f"- executed in the automatic CPU benchmark job: benchmark_cpu ({counts['benchmark_cpu']} files)\\n")
+              handle.write(
+                f"- delegated to manual GPU workflows: integration ({counts['integration']} files), gpu ({counts['gpu']} files), benchmark_gpu ({counts['benchmark_gpu']} files)\\n"
+              )
               handle.write("- reason: the repository pins CUDA-linked TorchRec/fbgemm wheels, so stack-level imports require libcuda.so.1 even for CPU assertions.\\n")
           PY
 
@@ -76,6 +101,59 @@ jobs:
           name: coverage-cpu-data
           path: .coverage.cpu
           include-hidden-files: true
+          if-no-files-found: error
+
+  cpu-benchmarks:
+    name: CPU Benchmarks
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+        with:
+          enable-cache: true
+
+      - name: Sync project environment
+        run: uv sync --locked
+
+      - name: Run CPU benchmark suite
+        run: |
+          rm -rf .benchmarks outputs/performance benchmark-result-cpu.json
+          uv run pytest tests/benchmarks/cpu -m benchmark_cpu --benchmark-json=benchmark-result-cpu.json -v
+
+      - name: Summarize CPU benchmark evidence
+        run: |
+          uv run python - <<'PY'
+          import os
+          from pathlib import Path
+
+          from tests import conftest
+
+          counts = conftest.count_classified_test_files()
+          payloads = sorted(path.name for path in Path("outputs/performance").glob("*.json"))
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as handle:
+              handle.write("## CPU benchmark evidence\n\n")
+              handle.write(f"- executed marker: benchmark_cpu ({counts['benchmark_cpu']} files) on ubuntu-latest\\n")
+              handle.write(f"- generated payloads: {', '.join(payloads) if payloads else 'none'}\\n")
+              handle.write("- artifacts: benchmark-result-cpu.json, outputs/performance/\\n")
+          PY
+
+      - name: Upload CPU benchmark results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: cpu-benchmark-results
+          path: |
+            benchmark-result-cpu.json
+            outputs/performance
           if-no-files-found: error
 
   coverage:
@@ -116,9 +194,10 @@ jobs:
             echo "## Coverage scope"
             echo
             echo "- enforced from the fast CPU CI workflow using unit-routed, CPU-safe modules only"
+            echo "- CPU benchmarks run automatically in ci.yml but do not affect the coverage gate"
             echo "- includes: src/taac2026/domain/*, src/taac2026/application/training/__init__.py, src/taac2026/application/training/cli.py, src/taac2026/application/training/runtime_optimization.py"
             echo "- integration and gpu coverage still lives in .github/workflows/gpu-tests.yml"
-            echo "- performance benchmarks are available in .github/workflows/performance-benchmarks.yml"
+            echo "- GPU-only benchmarks live in .github/workflows/performance-benchmarks.yml"
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Enforce CPU coverage gate

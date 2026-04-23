@@ -6,74 +6,85 @@ from types import SimpleNamespace
 import pytest
 
 
-UNIT_TEST_FILES = {
-    "test_benchmark_charts.py",
-    "test_clean_pycache.py",
-    "test_github_cleanup.py",
-    "test_dataset_eda.py",
-    "test_metrics.py",
-    "test_model_performance_plot.py",
-    "test_norms.py",
-    "test_package_training.py",
-    "test_property_based.py",
-    "test_payload.py",
-    "test_pooling_heads.py",
-    "test_runtime_optimization.py",
-    "test_schema_contract.py",
-    "test_tech_timeline.py",
-    "test_test_collection.py",
-    "test_transformer_blocks.py",
+TESTS_ROOT = Path(__file__).resolve().parent
+PHASE_DIRECTORIES: dict[str, frozenset[str]] = {
+    "unit": frozenset({"unit"}),
+    "integration": frozenset({"integration"}),
+    "gpu": frozenset({"gpu"}),
 }
-
-GPU_TEST_FILES = {
-    "bench_attention_forward.py",
-    "bench_collate.py",
-    "bench_e2e_train_step.py",
-    "bench_embedding_lookup.py",
-    "bench_ffn_forward.py",
-    "bench_inference_latency.py",
-    "bench_rmsnorm.py",
-    "test_gpu.py",
-    "test_triton_kernels.py",
-}
-
-INTEGRATION_TEST_FILES = {
-    "test_data_pipeline.py",
-    "test_embedding_collection.py",
-    "test_evaluate_cli.py",
-    "test_experiment_packages.py",
-    "test_model_robustness.py",
-    "test_optimizers.py",
-    "test_profiling.py",
-    "test_profiling_unit.py",
-    "test_quantization.py",
-    "test_runtime_integration.py",
-    "test_search.py",
-    "test_search_trial.py",
-    "test_search_worker.py",
-    "test_search_worker_integration.py",
-    "test_torchrec_embedding.py",
-    "test_training_recovery.py",
+BENCHMARK_PHASE_DIRECTORIES: dict[str, tuple[str, str]] = {
+    "benchmark_cpu": ("benchmarks", "cpu"),
+    "benchmark_gpu": ("benchmarks", "gpu"),
 }
 
 
-def _build_test_file_classification() -> dict[str, str]:
-    overlapping_files = (
-        (UNIT_TEST_FILES & INTEGRATION_TEST_FILES)
-        | (UNIT_TEST_FILES & GPU_TEST_FILES)
-        | (INTEGRATION_TEST_FILES & GPU_TEST_FILES)
-    )
-    if overlapping_files:
-        overlap = ", ".join(sorted(overlapping_files))
+def _relative_test_parts(collection_path: Path) -> tuple[str, ...] | None:
+    parts = collection_path.parts
+    for index in range(len(parts) - 1, -1, -1):
+        if parts[index] == "tests":
+            return parts[index + 1 :]
+    return None
+
+
+def _is_test_module_path(collection_path: Path) -> bool:
+    return collection_path.suffix == ".py" and collection_path.name.startswith(("test_", "bench_"))
+
+
+def _classify_test_path(collection_path: Path) -> str | None:
+    if not _is_test_module_path(collection_path):
+        return None
+
+    relative_parts = _relative_test_parts(collection_path)
+    if not relative_parts:
+        return None
+
+    if relative_parts[0] == "benchmarks":
+        if len(relative_parts) < 2:
+            return None
+        benchmark_directory = (relative_parts[0], relative_parts[1])
+        for phase, phase_directory in BENCHMARK_PHASE_DIRECTORIES.items():
+            if benchmark_directory == phase_directory:
+                return phase
+        return None
+
+    phase_directory = relative_parts[0]
+    for phase, directory_names in PHASE_DIRECTORIES.items():
+        if phase_directory in directory_names:
+            return phase
+    return None
+
+
+def _render_test_path(collection_path: Path) -> str:
+    relative_parts = _relative_test_parts(collection_path)
+    if not relative_parts:
+        return collection_path.as_posix()
+    return Path("tests", *relative_parts).as_posix()
+
+
+def count_classified_test_files() -> dict[str, int]:
+    counts = {
+        **{phase: 0 for phase in PHASE_DIRECTORIES},
+        **{phase: 0 for phase in BENCHMARK_PHASE_DIRECTORIES},
+    }
+    unclassified_files: list[str] = []
+
+    for candidate in TESTS_ROOT.rglob("*.py"):
+        if not _is_test_module_path(candidate):
+            continue
+        phase = _classify_test_path(candidate)
+        if phase is None:
+            unclassified_files.append(_render_test_path(candidate))
+            continue
+        counts[phase] += 1
+
+    if unclassified_files:
+        missing = ", ".join(sorted(unclassified_files))
         raise pytest.UsageError(
-            "Test files cannot be classified into multiple phases: "
-            f"{overlap}"
+            "Collected test files must live under tests/unit, tests/integration, "
+            f"tests/gpu, tests/benchmarks/cpu, or tests/benchmarks/gpu: {missing}"
         )
 
-    classification = {filename: "unit" for filename in UNIT_TEST_FILES}
-    classification.update({filename: "integration" for filename in INTEGRATION_TEST_FILES})
-    classification.update({filename: "gpu" for filename in GPU_TEST_FILES})
-    return classification
+    return counts
 
 
 def _requested_collection_phases(config: pytest.Config) -> set[str] | None:
@@ -84,10 +95,10 @@ def _requested_collection_phases(config: pytest.Config) -> set[str] | None:
     tokens = [token for token in normalized.split() if token]
     if not tokens:
         return None
-    allowed_tokens = {"unit", "integration", "gpu", "or"}
+    allowed_tokens = {"unit", "integration", "gpu", "benchmark_cpu", "benchmark_gpu", "or"}
     if any(token not in allowed_tokens for token in tokens):
         return None
-    phases = {token for token in tokens if token in {"unit", "integration", "gpu"}}
+    phases = {token for token in tokens if token in {"unit", "integration", "gpu", "benchmark_cpu", "benchmark_gpu"}}
     return phases or None
 
 
@@ -99,9 +110,7 @@ def pytest_ignore_collect(collection_path: Path, config: pytest.Config) -> bool:
     if requested_phases is None:
         return False
 
-    filename = collection_path.name
-    classification = _build_test_file_classification()
-    file_phase = classification.get(filename)
+    file_phase = _classify_test_path(collection_path)
     if file_phase is None:
         return False
     return file_phase not in requested_phases
@@ -109,23 +118,25 @@ def pytest_ignore_collect(collection_path: Path, config: pytest.Config) -> bool:
 
 def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
     del config
-    classification = _build_test_file_classification()
     unclassified_files: set[str] = set()
     for item in items:
-        filename = Path(str(item.fspath)).name
-        marker = classification.get(filename)
+        marker = _classify_test_path(Path(str(item.fspath)))
         if marker == "unit":
             item.add_marker(pytest.mark.unit)
         elif marker == "integration":
             item.add_marker(pytest.mark.integration)
         elif marker == "gpu":
             item.add_marker(pytest.mark.gpu)
+        elif marker == "benchmark_cpu":
+            item.add_marker(pytest.mark.benchmark_cpu)
+        elif marker == "benchmark_gpu":
+            item.add_marker(pytest.mark.benchmark_gpu)
         else:
-            unclassified_files.add(filename)
+            unclassified_files.add(_render_test_path(Path(str(item.fspath))))
 
     if unclassified_files:
         missing = ", ".join(sorted(unclassified_files))
         raise pytest.UsageError(
-            "Collected test files are not classified in UNIT_TEST_FILES, "
-            f"INTEGRATION_TEST_FILES, or GPU_TEST_FILES: {missing}"
+            "Collected test files must live under tests/unit, tests/integration, "
+            f"tests/gpu, tests/benchmarks/cpu, or tests/benchmarks/gpu: {missing}"
         )

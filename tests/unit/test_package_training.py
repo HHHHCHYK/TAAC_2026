@@ -49,7 +49,7 @@ def test_build_training_bundle_payload_is_trimmed_to_training_runtime(tmp_path: 
     assert "project/src/taac2026/infrastructure/io/files.py" in payload_names
     assert "project/uv.lock" in payload_names
     assert "project/src/taac2026/application/search/cli.py" not in payload_names
-    assert "project/tests/test_package_training.py" not in payload_names
+    assert "project/tests/unit/test_package_training.py" not in payload_names
     assert "project/docs/getting-started.md" not in payload_names
 
 
@@ -72,9 +72,9 @@ def test_build_training_bundle_copies_root_pyproject_and_readme(tmp_path: Path) 
         assert readme_member is not None
         payload_readme_text = readme_member.read().decode("utf-8")
 
-    source_pyproject_text = (Path(__file__).resolve().parents[1] / "pyproject.toml").read_text(encoding="utf-8")
-    source_lockfile_text = (Path(__file__).resolve().parents[1] / "uv.lock").read_text(encoding="utf-8")
-    source_readme_text = (Path(__file__).resolve().parents[1] / "README.md").read_text(encoding="utf-8")
+    source_pyproject_text = (Path(__file__).resolve().parents[2] / "pyproject.toml").read_text(encoding="utf-8")
+    source_lockfile_text = (Path(__file__).resolve().parents[2] / "uv.lock").read_text(encoding="utf-8")
+    source_readme_text = (Path(__file__).resolve().parents[2] / "README.md").read_text(encoding="utf-8")
 
     assert pyproject_text == source_pyproject_text
     assert payload_lockfile_text == source_lockfile_text

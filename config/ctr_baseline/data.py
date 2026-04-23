@@ -25,8 +25,8 @@ __all__ = [
     "SEQUENCE_AUTHOR_FEATURE_IDS",
     "SEQUENCE_POST_FEATURE_IDS",
     "SEQUENCE_TIMESTAMP_FEATURE_IDS",
-    "TIME_GAP_BUCKET_COUNT",
     "TIMESTAMP_FEATURE_ID",
+    "TIME_GAP_BUCKET_COUNT",
     "build_data_pipeline",
     "load_dataloaders",
 ]

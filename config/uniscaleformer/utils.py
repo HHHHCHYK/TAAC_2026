@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import torch
 from torch import nn
+
 from taac2026.infrastructure.nn.pooling import masked_mean
 
 

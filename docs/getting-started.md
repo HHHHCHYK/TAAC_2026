@@ -206,7 +206,7 @@ uv run pytest tests -q
 uv run pytest -m unit -q
 
 # 本地 GPU 测试集合
-uv run python scripts/run_gpu_tests.py
+uv run pytest tests/gpu/test_gpu_environment.py tests/gpu -q
 ```
 
 → 详细测试指南见 [测试](guide/testing.md)
@@ -227,12 +227,12 @@ uv run --no-project --isolated --with zensical zensical build --clean
 
 ## CLI 命令速查
 
-| 命令                          | 用途               |
-| ----------------------------- | ------------------ |
-| `taac-train`                  | 训练实验包         |
-| `taac-evaluate`               | 评估 checkpoint    |
-| `taac-search`                 | Optuna 超参数搜索  |
-| `taac-package-train`          | 打包线上训练 zip   |
+| 命令                          | 用途                |
+| ----------------------------- | ------------------- |
+| `taac-train`                  | 训练实验包          |
+| `taac-evaluate`               | 评估 checkpoint     |
+| `taac-search`                 | Optuna 超参数搜索   |
+| `taac-package-train`          | 打包线上训练 zip    |
 | `taac-bench-report`           | 生成 benchmark 图表 |
-| `taac-plot-model-performance` | 生成性能对比图     |
-| `taac-clean-pycache`          | 清理 `__pycache__` |
+| `taac-plot-model-performance` | 生成性能对比图      |
+| `taac-clean-pycache`          | 清理 `__pycache__`  |

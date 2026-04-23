@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import torch
 from taac2026.infrastructure.nn.optimizers import build_hybrid_optimizer
 
 

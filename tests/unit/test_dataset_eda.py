@@ -119,7 +119,7 @@ class TestSequenceLengths:
         rows = _sample_rows()
         seq_stats = compute_sequence_lengths(iter(rows))
         assert set(seq_stats.keys()) == {"domain_a", "domain_b", "domain_c", "domain_d"}
-        for domain, st in seq_stats.items():
+        for _, st in seq_stats.items():
             assert st.count == len(rows)
 
 

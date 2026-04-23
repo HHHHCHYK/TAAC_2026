@@ -26,7 +26,7 @@ class BatchTensors:
     def batch_size(self) -> int:
         return int(self.labels.shape[0])
 
-    def to(self, device: torch.device | str) -> "BatchTensors":
+    def to(self, device: torch.device | str) -> BatchTensors:
         def move_optional_feature(feature: Any | None) -> Any | None:
             return None if feature is None else feature.to(device)
 

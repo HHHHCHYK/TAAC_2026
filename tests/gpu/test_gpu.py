@@ -16,7 +16,6 @@ is safe to collect in any environment.
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
 import numpy as np
@@ -31,7 +30,6 @@ from taac2026.application.training.profiling import (
     set_random_seed,
 )
 from taac2026.application.training.runtime_optimization import (
-    RuntimeExecution,
     prepare_runtime_execution,
 )
 from taac2026.domain.config import DataConfig, ModelConfig, TrainConfig
@@ -128,7 +126,7 @@ class TestDevicePlacement:
 
     def test_model_on_gpu(self, gpu_workspace: Path, gpu_device: torch.device):
         data_cfg, model_cfg, train_cfg = _make_configs(gpu_workspace)
-        train_loader, val_loader, data_stats = build_local_data_pipeline(data_cfg, model_cfg, train_cfg)
+        _, _, data_stats = build_local_data_pipeline(data_cfg, model_cfg, train_cfg)
         model = TinyExperimentModel(data_cfg, model_cfg, data_stats.dense_dim).to(gpu_device)
         for param in model.parameters():
             assert param.device.type == "cuda", f"Parameter not on GPU: {param.device}"
@@ -226,7 +224,7 @@ class TestAmpFloat16:
             rt.backward_and_step(loss, optimizer, model_parameters=model.parameters())
             losses.append(float(loss.detach().cpu().item()))
 
-        assert all(np.isfinite(l) for l in losses), f"Non-finite loss in AMP training: {losses}"
+        assert all(np.isfinite(loss_value) for loss_value in losses), f"Non-finite loss in AMP training: {losses}"
 
 
 class TestAmpBfloat16:
@@ -309,7 +307,7 @@ class TestCudaProfiling:
         model = TinyExperimentModel(data_cfg, model_cfg, data_stats.dense_dim).to(gpu_device)
         rt = prepare_runtime_execution(model, train_cfg, gpu_device)
         loss_fn, _ = build_local_loss_stack(data_cfg, model_cfg, train_cfg, data_stats, gpu_device)
-        logits, labels, groups, val_loss = collect_loader_outputs(
+        logits, labels, _, val_loss = collect_loader_outputs(
             rt.execution_model, val_loader, gpu_device, loss_fn, runtime_execution=rt,
         )
         assert logits.dtype == np.float32
@@ -325,7 +323,7 @@ class TestCudaProfiling:
 def _triton_available() -> bool:
     """Check if triton is importable (required for torch.compile inductor backend)."""
     try:
-        import triton  # noqa: F401
+        import triton
         return True
     except ImportError:
         return False
@@ -373,19 +371,12 @@ class TestTorchCompileGpu:
 
 class TestTorchaoGpuExtensions:
     def test_torchao_native_extensions_match_cuda_toolchain(self):
-        import torchao
+        from tests.gpu_env_support import run_torchao_extension_probe
 
-        assert "+cu128" in getattr(torchao, "__version__", "")
+        probe = run_torchao_extension_probe()
 
-        extension_paths = sorted(Path(torchao.__file__).resolve().parent.glob("_C*.so"))
-        assert extension_paths, "torchao CUDA wheel did not expose native extensions"
-
-        loaded: list[str] = []
-        for extension_path in extension_paths:
-            torch.ops.load_library(str(extension_path))
-            loaded.append(extension_path.name)
-
-        assert loaded
+        assert probe["count"] >= 1
+        assert probe["loaded"]
 
 
 # ---------------------------------------------------------------------------
@@ -399,6 +390,7 @@ class TestGpuMemory:
         data_cfg, model_cfg, train_cfg = _make_configs(gpu_workspace)
         _, _, data_stats = build_local_data_pipeline(data_cfg, model_cfg, train_cfg)
         model = TinyExperimentModel(data_cfg, model_cfg, data_stats.dense_dim).to(gpu_device)
+        assert sum(parameter.numel() for parameter in model.parameters()) > 0
         allocated = torch.cuda.memory_allocated(gpu_device)
         assert allocated > 0, "No memory allocated on GPU after model creation"
         peak = torch.cuda.max_memory_allocated(gpu_device)
@@ -462,7 +454,7 @@ class TestGpuTrainingLoop:
         optimizer = build_local_optimizer_component(model, train_cfg)
 
         # Train loop
-        for epoch in range(1, 3):
+        for _ in range(1, 3):
             rt.execution_model.train()
             for batch in train_loader:
                 batch = batch.to(device)
@@ -517,7 +509,7 @@ class TestGpuTrainingLoop:
         optimizer = build_local_optimizer_component(model, train_cfg)
 
         all_losses = []
-        for epoch in range(1, 3):
+        for _ in range(1, 3):
             rt.execution_model.train()
             for batch in train_loader:
                 batch = batch.to(device)
@@ -533,10 +525,10 @@ class TestGpuTrainingLoop:
                 )
                 all_losses.append(float(loss.detach().cpu().item()))
 
-        assert all(np.isfinite(l) for l in all_losses)
+        assert all(np.isfinite(loss_value) for loss_value in all_losses)
 
         # Validate on GPU
-        logits_arr, labels_arr, _, val_loss = collect_loader_outputs(
+        logits_arr, _, _, val_loss = collect_loader_outputs(
             rt.execution_model, val_loader, device, loss_fn, runtime_execution=rt,
         )
         assert np.isfinite(val_loss)

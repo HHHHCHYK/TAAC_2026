@@ -13,7 +13,7 @@ icon: lucide/container
 - `.devcontainer/devcontainer.json`
 - `.devcontainer/Dockerfile`
 - `.devcontainer/post-create.sh`
-- `scripts/verify_gpu_env.py`
+- `tests/gpu/test_gpu_environment.py`
 
 ## 宿主机前置要求
 
@@ -50,7 +50,7 @@ bash .devcontainer/post-create.sh
 
 1. `uv python install 3.13`
 2. `uv sync --locked --python 3.13`
-3. `uv run python scripts/verify_gpu_env.py --json`
+3. `uv run pytest tests/gpu/test_gpu_environment.py -q`
 
 第三步会验证：
 
@@ -70,13 +70,13 @@ bash .devcontainer/post-create.sh
 uv run pytest -q
 
 # GPU 测试
-uv run python scripts/run_gpu_tests.py
+uv run pytest tests/gpu/test_gpu_environment.py tests/gpu -q
 
 # 训练 baseline
 uv run taac-train --experiment config/baseline
 
 # 重新检查环境链路
-uv run python scripts/verify_gpu_env.py --json
+uv run pytest tests/gpu/test_gpu_environment.py -q
 ```
 
 ## 启用 Transformer Engine 可选后端
@@ -85,7 +85,7 @@ uv run python scripts/verify_gpu_env.py --json
 
 ```bash
 uv sync --locked --extra te --no-build-isolation-package transformer-engine-torch
-uv run python scripts/verify_gpu_env.py --json
+uv run pytest tests/gpu/test_gpu_environment.py -q
 ```
 
 如果当前 Python / PyTorch / CUDA 组合没有命中 TE 的预编译 `transformer-engine-torch` wheel，`uv sync` 会回退到源码编译。当前 devcontainer 可先显式导出 CUDA / cuDNN 路径，再重试同步：
@@ -98,7 +98,7 @@ export CUDNN_HOME="$CUDNN_PATH"
 export CPATH="$CUDA_PATH/targets/x86_64-linux/include:${CPATH:-}"
 export LD_LIBRARY_PATH="$CUDNN_PATH/lib:$CUDA_PATH/lib64:$CUDA_PATH/targets/x86_64-linux/lib:${LD_LIBRARY_PATH:-}"
 uv sync --locked --extra te --no-build-isolation-package transformer-engine-torch
-uv run python scripts/verify_gpu_env.py --json
+uv run pytest tests/gpu/test_gpu_environment.py -q
 ```
 
 当前仓库默认使用自动精度路由：`NVFP4 > MXFP8 > FP8 > BF16 > FP16`。如需覆盖自动选择，可在共享 block 构造时显式传入 `te_precision` 或 `te_recipe_mode`。

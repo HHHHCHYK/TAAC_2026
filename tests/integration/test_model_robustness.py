@@ -50,7 +50,7 @@ def test_unirec_padding_positions_remain_zero(test_workspace: TestWorkspace) -> 
     We hook into the final_norm layer to capture the hidden states right
     before the head, then check that padding positions are all-zero.
     """
-    model, batch, experiment = _build_unirec(test_workspace)
+    model, batch, _ = _build_unirec(test_workspace)
     model.eval()
 
     captured: list[torch.Tensor] = []
@@ -148,7 +148,7 @@ def test_unirec_forward_under_cpu_autocast(test_workspace: TestWorkspace) -> Non
     - No errors from dtype mismatches (the original bug: torch.zeros defaulting
       to fp32 while hidden_states is bf16 under AMP)
     """
-    model, batch, experiment = _build_unirec(test_workspace)
+    model, batch, _ = _build_unirec(test_workspace)
     model.eval()
 
     with torch.no_grad(), torch.autocast("cpu", dtype=torch.bfloat16):

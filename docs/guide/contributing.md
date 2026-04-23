@@ -183,7 +183,7 @@ def build_data_pipeline(data_config, model_config, train_config):
 
 ```bash
 # 1. 检查 ExperimentSpec / 默认 builder / 前向契约
-uv run pytest tests/test_experiment_packages.py -q
+uv run pytest tests/integration/test_experiment_packages.py -q
 
 # 2. 跑一次最小训练
 uv run taac-train --experiment config/my_experiment
@@ -192,7 +192,7 @@ uv run taac-train --experiment config/my_experiment
 uv run taac-evaluate single --experiment config/my_experiment
 ```
 
-如果你新增了测试文件，还必须把文件名登记到 `tests/conftest.py` 的 `UNIT_TEST_FILES`、`INTEGRATION_TEST_FILES` 或 `GPU_TEST_FILES` 集合里，否则 pytest 收集会直接失败。
+如果你新增了测试文件，把它放进 `tests/unit/`、`tests/integration/`、`tests/gpu/`，或 benchmark 对应的 `tests/benchmarks/cpu/`、`tests/benchmarks/gpu/` 目录；未分类测试如果留在 `tests/` 根目录，pytest 收集会直接失败。
 
 ## 数据与 schema 约定
 

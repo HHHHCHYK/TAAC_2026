@@ -446,8 +446,8 @@ class TimeAwareHSTU(nn.Module):
 
 
 __all__ = [
-    "BranchTransducer",
     "BlockAttnRes",
+    "BranchTransducer",
     "FourierTimeEncoding",
     "GatedFusion",
     "HSTUBlock",
@@ -457,9 +457,9 @@ __all__ = [
     "RotaryEmbedding",
     "SiLUAttention",
     "TimeAwareHSTU",
+    "ULTRAHSTUBlock",
     "build_causal_mask",
     "build_local_window_mask",
     "build_unified_attention_mask",
     "masked_last",
-    "ULTRAHSTUBlock",
 ]
