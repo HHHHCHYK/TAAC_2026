@@ -7,6 +7,7 @@ WORKDIR="{{workdir_expr}}"
 PROJECT_DIR="$WORKDIR/{{payload_project_dirname}}"
 DATASET_PATH="{{dataset_path_expr}}"
 OUTPUT_DIR="{{output_dir_expr}}"
+CUDA_PROFILE="{{cuda_profile_expr}}"
 ENABLE_TE="{{enable_te_expr}}"
 FORCE_EXTRACT="{{force_extract_expr}}"
 
@@ -41,5 +42,14 @@ if [[ "$ENABLE_TE" == "1" ]]; then
     UV_SYNC_EXTRA_ARGS+=(--extra te)
 fi
 
-uv sync --locked "${UV_SYNC_EXTRA_ARGS[@]}"
+case "$CUDA_PROFILE" in
+    cpu|cuda126|cuda128|cuda130)
+        ;;
+    *)
+        echo "Unsupported CUDA profile '$CUDA_PROFILE'. Expected one of: cpu, cuda126, cuda128, cuda130." >&2
+        exit 2
+        ;;
+esac
+
+uv sync --locked --extra "$CUDA_PROFILE" "${UV_SYNC_EXTRA_ARGS[@]}"
 uv run taac-train --experiment "./{{bundled_experiment_path}}" --dataset-path "$DATASET_PATH" --run-dir "$OUTPUT_DIR" "$@"

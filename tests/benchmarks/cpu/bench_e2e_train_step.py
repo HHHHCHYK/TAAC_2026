@@ -7,7 +7,15 @@ from taac2026.infrastructure.io.default_data_pipeline import load_dataloaders
 from tests.support import TinyExperimentModel
 
 
-def test_e2e_train_step_baseline(benchmark, benchmark_device, benchmark_workspace, cuda_timer, performance_recorder) -> None:
+def test_e2e_train_step_baseline(
+    benchmark,
+    benchmark_device,
+    benchmark_workspace,
+    require_torchrec_runtime,
+    cuda_timer,
+    performance_recorder,
+) -> None:
+    del require_torchrec_runtime
     model_config = ModelConfig(name="tiny_benchmark", **benchmark_workspace.model_kwargs)
     model = TinyExperimentModel(benchmark_workspace.data_config, model_config, benchmark_workspace.data_config.dense_feature_dim)
     model = model.to(benchmark_device)

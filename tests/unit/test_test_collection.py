@@ -3,10 +3,14 @@ from __future__ import annotations
 import importlib
 from pathlib import Path
 import sys
-import tomllib
 from types import SimpleNamespace
 
 import pytest
+
+try:
+    import tomllib
+except ModuleNotFoundError:  # pragma: no cover - Python 3.10 fallback
+    import tomli as tomllib
 
 from tests import conftest as tests_conftest
 
@@ -78,7 +82,7 @@ def test_pytest_config_collects_benchmark_modules_by_default() -> None:
     assert config["tool"]["pytest"]["ini_options"]["python_files"] == ["test_*.py", "bench_*.py"]
     assert config["tool"]["pytest"]["ini_options"]["markers"][-2:] == [
         "benchmark_cpu: CPU-safe benchmark tests that run in automatic CI",
-        "benchmark_gpu: GPU benchmark tests that run only in manual benchmark workflows",
+        "benchmark_gpu: GPU benchmark tests that run only via local CLI entry points",
     ]
 
 
@@ -158,3 +162,21 @@ def test_count_classified_test_files_rejects_unclassified_modules(
 
     with pytest.raises(pytest.UsageError, match=r"tests/test_unknown\.py"):
         tests_conftest.count_classified_test_files()
+
+
+def test_cpu_ci_safe_benchmark_files_excludes_torchrec_runtime_gated_modules(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    tests_root = tmp_path / "tests"
+    benchmark_root = tests_root / "benchmarks" / "cpu"
+    benchmark_root.mkdir(parents=True)
+    (benchmark_root / "bench_safe.py").write_text("def test_safe():\n    pass\n", encoding="utf-8")
+    (benchmark_root / "bench_runtime.py").write_text(
+        "def test_runtime(require_torchrec_runtime):\n    del require_torchrec_runtime\n",
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(tests_conftest, "TESTS_ROOT", tests_root)
+
+    assert tests_conftest.cpu_ci_safe_benchmark_files() == ("tests/benchmarks/cpu/bench_safe.py",)

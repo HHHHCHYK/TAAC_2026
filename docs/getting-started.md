@@ -7,12 +7,12 @@ icon: lucide/rocket
 ## 前置要求
 
 - Linux 环境，推荐 Ubuntu 24.04
-- Python 3.13（仓库支持范围为 3.12-3.13）
+- Python 3.13（仓库支持范围为 3.10-3.13）
 - [uv](https://docs.astral.sh/uv/) 包管理器
-- NVIDIA GPU + CUDA 12.8 驱动栈用于完整训练与 GPU 测试
+- NVIDIA GPU + CUDA 12.6 / 12.8 / 13.0 驱动栈之一用于完整训练；GPU 测试与 GPU benchmark 通过本地 CUDA CLI 复现
 
 !!! important "平台支持"
-    仓库只支持 Linux 运行时。Windows 原生环境不再是支持目标；如果你在 Windows 上开发，请使用 WSL2 + Docker 并通过 devcontainer 进入 Linux 容器。完整步骤见 [开发容器 (WSL2 + Docker)](guide/devcontainer.md)。
+    仓库只支持 Linux 运行时。Windows 与 WSL 不在支持范围内。
 
 ## 安装
 
@@ -25,7 +25,13 @@ git lfs pull
 
 # 安装并固定 Python 3.13
 uv python install 3.13
-uv sync --locked
+
+# CPU-only profile：文档、unit、CPU benchmark
+uv sync --locked --extra cpu
+
+# GPU profile：训练，以及本地 integration / GPU 测试 / GPU benchmark
+# 手动选择与你本机 CUDA 对应的 profile；如需切换可改成 cuda126 / cuda128 / cuda130
+uv sync --locked --extra cuda128
 ```
 
 文档站提交的 EDA 与技术时间线图表 JSON 由 Git LFS 管理；如果你看到 `docs/assets/figures/**/*.echarts.json` 只有 pointer 文本，先重新执行 `git lfs pull`。
@@ -33,16 +39,6 @@ uv sync --locked
 !!! warning "关于 PyPI 镜像"
     仓库在 `pyproject.toml` 里固定了 canonical PyPI 作为默认索引，以保证 `uv.lock` 在本机和 CI 间一致。不要额外传 `--default-index` 或 `--index-url` 指向国内镜像，否则 `uv` 会判定 `uv.lock` 需要更新。  
     如果只是想加速下载，优先使用系统代理或透明代理。
-
-### 使用 devcontainer
-
-如果你通过 WSL2 + Docker 开发，可以直接在仓库根目录执行 VS Code 的 Reopen in Container。容器会使用 `.devcontainer/` 下的 CUDA 基础镜像，并在首次创建后自动运行：
-
-```bash
-bash .devcontainer/post-create.sh
-```
-
-该脚本会安装 Python 3.13、执行 `uv sync --locked`，并运行 GPU / TorchRec 自检脚本。
 
 ## 训练第一个模型
 
@@ -159,7 +155,7 @@ uv run taac-train --experiment config/hyformer
 `taac-package-train` 会把指定实验包裁剪成训练所需的最小运行时，并输出单个 zip。
 zip 顶层包含：
 
-- `run.sh`：自动解压 payload、执行 `uv sync --locked`、调用训练 CLI
+- `run.sh`：自动解压 payload、按 `TAAC_CUDA_PROFILE` 选择 CUDA profile、调用训练 CLI
 - `runtime_payload.tar.gz`：最小训练源码与目标实验包
 - `bundle_manifest.json`：打包元数据
 - `README.md`：压缩包内的使用说明
@@ -205,7 +201,7 @@ uv run pytest tests -q
 # 快速单元测试
 uv run pytest -m unit -q
 
-# 本地 GPU 测试集合
+# 本地 GPU 测试集合（CLI only）
 uv run pytest tests/gpu/test_gpu_environment.py tests/gpu -q
 ```
 
@@ -227,12 +223,12 @@ uv run --no-project --isolated --with zensical zensical build --clean
 
 ## CLI 命令速查
 
-| 命令                          | 用途                |
-| ----------------------------- | ------------------- |
-| `taac-train`                  | 训练实验包          |
-| `taac-evaluate`               | 评估 checkpoint     |
-| `taac-search`                 | Optuna 超参数搜索   |
-| `taac-package-train`          | 打包线上训练 zip    |
-| `taac-bench-report`           | 生成 benchmark 图表 |
-| `taac-plot-model-performance` | 生成性能对比图      |
-| `taac-clean-pycache`          | 清理 `__pycache__`  |
+| 命令                          | 用途                                                          |
+| ----------------------------- | ------------------------------------------------------------- |
+| `taac-train`                  | 训练实验包                                                    |
+| `taac-evaluate`               | 评估 checkpoint                                               |
+| `taac-search`                 | Optuna 超参数搜索                                             |
+| `taac-package-train`          | 打包线上训练 zip                                              |
+| `taac-bench-report`           | 生成 benchmark 图表                                           |
+| `taac-plot-model-performance` | 生成性能对比图                                                |
+| `taac-clean-pycache`          | 清理 `__pycache__`，见 [仓库缓存清理](guide/cache-cleanup.md) |

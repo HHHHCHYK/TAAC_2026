@@ -6,14 +6,14 @@ icon: lucide/clipboard-list
 
 ## 测试分层
 
-| 层级            | 标记                  | 特点                       | 示例                                  |
-| --------------- | --------------------- | -------------------------- | ------------------------------------- |
-| **Unit**        | `-m unit`             | 纯逻辑、轻依赖、快速       | 指标计算、CLI 参数解析、契约校验      |
-| **Integration** | `-m integration`      | 跨模块闭环、需要数据       | 训练→评估→搜索完整流程                |
-| **CPU Benchmark** | `-m benchmark_cpu`  | CPU-only 基准，自动 CI 执行 | `tests/benchmarks/cpu/bench_ffn_forward.py` |
-| **GPU Benchmark** | `-m benchmark_gpu`  | GPU-only 基准，手动 workflow 执行 | `tests/benchmarks/gpu/bench_transformer_backends.py` |
-| **Property**    | 归入 unit             | 基于 Hypothesis 的性质测试 | 指标边界、稳定哈希                    |
-| **Fault**       | 归入 unit/integration | 失败路径和异常分支         | 坏 JSON、缺失 EXPERIMENT、worker 崩溃 |
+| 层级              | 标记                  | 特点                         | 示例                                                 |
+| ----------------- | --------------------- | ---------------------------- | ---------------------------------------------------- |
+| **Unit**          | `-m unit`             | 纯逻辑、轻依赖、快速         | 指标计算、CLI 参数解析、契约校验                     |
+| **Integration**   | `-m integration`      | 跨模块闭环、需要数据         | 训练→评估→搜索完整流程                               |
+| **CPU Benchmark** | `-m benchmark_cpu`    | CPU-only 基准，自动 CI 执行  | `tests/benchmarks/cpu/bench_ffn_forward.py`          |
+| **GPU Benchmark** | `-m benchmark_gpu`    | GPU-only 基准，仅本地 CUDA CLI 执行 | `tests/benchmarks/gpu/bench_transformer_backends.py` |
+| **Property**      | 归入 unit             | 基于 Hypothesis 的性质测试   | 指标边界、稳定哈希                                   |
+| **Fault**         | 归入 unit/integration | 失败路径和异常分支           | 坏 JSON、缺失 EXPERIMENT、worker 崩溃                |
 
 分类通过目录实现自动标记：`tests/unit/`、`tests/integration/`、`tests/gpu/`、`tests/benchmarks/cpu/` 和 `tests/benchmarks/gpu/` 会分别路由到对应阶段，不需要在每条用例上手写 `@pytest.mark`。
 
@@ -21,7 +21,11 @@ icon: lucide/clipboard-list
 
 ```bash
 # 同步环境
-uv sync --locked
+uv sync --locked --extra cpu
+
+# 如果要跑 integration / gpu / benchmark_gpu
+# 手动选择与你本机 CUDA 对应的 profile
+uv sync --locked --extra cuda128
 
 # 完整回归
 uv run pytest tests -q
@@ -35,7 +39,7 @@ uv run pytest -m integration -q
 # 自动 CI 上的 CPU benchmark
 uv run pytest tests/benchmarks/cpu -m benchmark_cpu -v
 
-# 手动 GPU benchmark
+# GPU benchmark（CLI only）
 uv run pytest tests/benchmarks/gpu -m benchmark_gpu -v
 ```
 
@@ -56,17 +60,17 @@ Coverage 统计范围与门槛由 `pyproject.toml` 控制：
 | 分支覆盖 | 开启                                                                                          |
 | 最低门槛 | 70%                                                                                           |
 
-本地完整 coverage 仍建议按上面的 unit + integration 方式采集。快速 CI 会自动再跑一轮 `benchmark_cpu`，但 coverage 门槛仍只对 `-m unit` 的 CPU-safe 子集执行：`src/taac2026/domain/*`、`src/taac2026/application/training/__init__.py`、`src/taac2026/application/training/cli.py`、`src/taac2026/application/training/runtime_optimization.py`。`integration`、`gpu` 与 `benchmark_gpu` 则留在手动 GPU workflows 中。
+本地完整 coverage 仍建议按上面的 unit + integration 方式采集。快速 CI 会自动再跑一轮 `benchmark_cpu` 的 CPU-safe 子集，但 coverage 门槛仍只对 `-m unit` 的 CPU-safe 子集执行：`src/taac2026/domain/*`、`src/taac2026/application/training/__init__.py`、`src/taac2026/application/training/cli.py`、`src/taac2026/application/training/runtime_optimization.py`。`integration`、`gpu` 与 `benchmark_gpu` 则保留在本地 CUDA CLI 入口中。
 
 ## 模块改动后的最小复核
 
-| 改动范围                                          | 跑哪些测试                                                                                        |
-| ------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
-| `domain/metrics.py`                               | `tests/unit/test_metrics.py tests/unit/test_property_based.py`                                                          |
-| `infrastructure/experiments/payload.py` 或 loader | `tests/unit/test_payload.py`                                                                                 |
-| `application/training/`                           | `tests/integration/test_profiling_unit.py tests/integration/test_profiling.py tests/unit/test_runtime_optimization.py tests/integration/test_training_recovery.py` |
-| `application/search/`                             | `tests/integration/test_search_trial.py tests/integration/test_search_worker.py tests/integration/test_search_worker_integration.py tests/integration/test_search.py`     |
-| 数据读取 / batch 组装                             | `tests/integration/test_data_pipeline.py tests/integration/test_runtime_integration.py`                                               |
+| 改动范围                                          | 跑哪些测试                                                                                                                                                            |
+| ------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `domain/metrics.py`                               | `tests/unit/test_metrics.py tests/unit/test_property_based.py`                                                                                                        |
+| `infrastructure/experiments/payload.py` 或 loader | `tests/unit/test_payload.py`                                                                                                                                          |
+| `application/training/`                           | `tests/integration/test_profiling_unit.py tests/integration/test_profiling.py tests/unit/test_runtime_optimization.py tests/integration/test_training_recovery.py`    |
+| `application/search/`                             | `tests/integration/test_search_trial.py tests/integration/test_search_worker.py tests/integration/test_search_worker_integration.py tests/integration/test_search.py` |
+| 数据读取 / batch 组装                             | `tests/integration/test_data_pipeline.py tests/integration/test_runtime_integration.py`                                                                               |
 
 !!! tip "快速复核模板"
     ```bash

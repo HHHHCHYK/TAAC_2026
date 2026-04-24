@@ -3,7 +3,14 @@ from __future__ import annotations
 from taac2026.infrastructure.io.default_data_pipeline import load_dataloaders
 
 
-def test_collate_batch_baseline(benchmark, benchmark_workspace, cuda_timer, performance_recorder) -> None:
+def test_collate_batch_baseline(
+    benchmark,
+    benchmark_workspace,
+    require_torchrec_runtime,
+    cuda_timer,
+    performance_recorder,
+) -> None:
+    del require_torchrec_runtime
     train_loader, _, _ = load_dataloaders(
         config=benchmark_workspace.data_config,
         vocab_size=257,

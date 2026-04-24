@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from io import BytesIO
+import json
 from pathlib import Path
 import tarfile
 import zipfile
@@ -29,13 +30,16 @@ def test_build_training_bundle_writes_single_zip_with_expected_layout(tmp_path: 
         names = set(bundle_archive.namelist())
         assert {"README.md", "bundle_manifest.json", "run.sh", "runtime_payload.tar.gz"} <= names
         run_sh = bundle_archive.read("run.sh").decode("utf-8")
-        manifest = bundle_archive.read("bundle_manifest.json").decode("utf-8")
+        manifest = json.loads(bundle_archive.read("bundle_manifest.json").decode("utf-8"))
 
     assert "TAAC_DATASET_PATH" in run_sh
-    assert "uv sync --locked" in run_sh
+    assert 'CUDA_PROFILE="${TAAC_CUDA_PROFILE:-cuda128}"' in run_sh
+    assert 'uv sync --locked --extra "$CUDA_PROFILE" "${UV_SYNC_EXTRA_ARGS[@]}"' in run_sh
+    assert "Unsupported CUDA profile" in run_sh
     assert 'uv run taac-train --experiment "./config/baseline"' in run_sh
-    assert '"bundled_experiment_path": "config/baseline"' in manifest
-    assert '"lockfile": "uv.lock"' in manifest
+    assert manifest["bundled_experiment_path"] == "config/baseline"
+    assert manifest["lockfile"] == "uv.lock"
+    assert manifest["runtime_env"]["cuda_profile"] == "TAAC_CUDA_PROFILE"
 
 
 def test_build_training_bundle_payload_is_trimmed_to_training_runtime(tmp_path: Path) -> None:

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import os
 import shlex
 import shutil
 import subprocess
@@ -36,8 +35,6 @@ class ExternalProfilerToolPlan:
 
 
 def _shell_join(command: list[str]) -> str:
-    if os.name == "nt":
-        return subprocess.list2cmdline(command)
     return shlex.join(command)
 
 
@@ -255,24 +252,19 @@ def build_evaluation_external_profiler_plan(
 
 def write_external_profiler_plan_artifacts(plan: dict[str, Any]) -> dict[str, Any]:
     report_directory = ensure_dir(Path(plan["report_directory"]))
-    script_extension = ".ps1" if os.name == "nt" else ".sh"
+    script_extension = ".sh"
     generated_artifacts: dict[str, Any] = {
         "plan_json": str(report_directory / "external_profilers.json"),
         "scripts": {},
     }
     for tool, tool_plan in plan["tools"].items():
         script_path = report_directory / f"profile_{tool}{script_extension}"
-        lines: list[str] = []
-        if os.name == "nt":
-            lines.append("$ErrorActionPreference = 'Stop'")
-        else:
-            lines.extend(["#!/usr/bin/env bash", "set -euo pipefail"])
+        lines = ["#!/usr/bin/env bash", "set -euo pipefail"]
         for note in tool_plan.get("notes", []):
             lines.append(f"# {note}")
         lines.append(tool_plan["suggested_command_string"])
         script_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
-        if os.name != "nt":
-            script_path.chmod(0o755)
+        script_path.chmod(0o755)
         generated_artifacts["scripts"][tool] = str(script_path)
     plan["generated_artifacts"] = generated_artifacts
     write_json(generated_artifacts["plan_json"], plan)

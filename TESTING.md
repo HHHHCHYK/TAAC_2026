@@ -2,15 +2,19 @@
 
 ## 概览
 
-测试套件位于 `tests/`，使用 [pytest](https://docs.pytest.org/) 运行。测试阶段由目录决定：`tests/unit/` 自动标记为 **unit**，`tests/integration/` 自动标记为 **integration**，`tests/gpu/` 自动标记为 **gpu**，`tests/benchmarks/cpu/` 自动标记为 **benchmark_cpu**，`tests/benchmarks/gpu/` 自动标记为 **benchmark_gpu**。这样自动 CI、手动 GPU 测试和手动性能基准各自有稳定入口，不再靠一个总目录绑定到同一个 marker。
+测试套件位于 `tests/`，使用 [pytest](https://docs.pytest.org/) 运行。测试阶段由目录决定：`tests/unit/` 自动标记为 **unit**，`tests/integration/` 自动标记为 **integration**，`tests/gpu/` 自动标记为 **gpu**，`tests/benchmarks/cpu/` 自动标记为 **benchmark_cpu**，`tests/benchmarks/gpu/` 自动标记为 **benchmark_gpu**。这样自动 CI 和本地 CLI 路径各自有稳定入口，不再靠一个总目录绑定到同一个 marker。
 
-快速 CI（`.github/workflows/ci.yml`）负责 CPU unit、CPU benchmark 与 CPU-safe coverage 门槛；GPU 测试与 GPU benchmark 则分别拆到手动触发的 `.github/workflows/gpu-tests.yml` 和 `.github/workflows/performance-benchmarks.yml`。这样做是因为仓库当前固定的是 CUDA 版 TorchRec 和 fbgemm-gpu，部分看似 CPU 断言的测试在导入阶段也会要求 `libcuda.so.1`，而文档部署不应被等待自托管 runner 的队列阻塞。
+快速 CI（`.github/workflows/ci.yml`）现在只负责 CPU unit、CPU-safe benchmark 子集与 CPU-safe coverage 门槛。GPU 测试与 GPU benchmark 则仅保留本地 CUDA CLI 入口。这样做是因为仓库当前固定的是 CUDA 版 TorchRec 和 fbgemm-gpu，部分看似 CPU 断言的测试在导入阶段也会要求 `libcuda.so.1`，因此需要把 fast CI 和 CUDA-linked 路径拆开。
 
 ## 快速开始
 
 ```bash
 # 同步环境（锁定版本）
-uv sync --locked
+uv sync --locked --extra cpu
+
+# 如果要跑 integration / gpu / 本地 benchmark
+# 手动选择与你本机 CUDA 对应的 profile
+uv sync --locked --extra cuda128
 
 # 全量回归
 uv run pytest -q
@@ -18,16 +22,16 @@ uv run pytest -q
 # 仅单元测试
 uv run pytest -m unit -q
 
-# 仅集成测试（需要 CUDA/TorchRec 运行栈，手动 GPU workflow 执行）
+# 仅集成测试（需要 CUDA/TorchRec 运行栈，本地 CLI 执行）
 uv run pytest -m integration -q
 
 # GPU 测试（需要 CUDA 硬件）
 uv run pytest tests/gpu/test_gpu_environment.py tests/gpu -q
 
-# 自动 CI 上的 CPU benchmark
+# 自动 CI 上的 CPU-safe benchmark 子集
 uv run pytest tests/benchmarks/cpu -m benchmark_cpu -v
 
-# 手动 GPU benchmark
+# GPU benchmark（本地 CLI）
 uv run pytest tests/benchmarks/gpu -m benchmark_gpu -v
 
 # 共享 Transformer backend benchmark（torch / triton / te）
@@ -44,8 +48,8 @@ uv run --with ruff ruff check .
 | `unit`          | 纯逻辑、CPU 可直接运行、快速              | `tests/unit/`，如 `test_metrics.py`、`test_property_based.py`                                        |
 | `integration`   | 跨模块闭环，依赖 TorchRec/CUDA 运行栈     | `tests/integration/`，如 `test_runtime_integration.py`、`test_search_worker.py`                      |
 | `gpu`           | 需要真实 CUDA 设备或 Triton 内核的功能测试 | `tests/gpu/`，如 `test_triton_kernels.py`、`test_gpu.py`                                             |
-| `benchmark_cpu` | CPU-only benchmark，自动在 CI 中运行      | `tests/benchmarks/cpu/`，如 `bench_ffn_forward.py`、`bench_inference_latency.py`                     |
-| `benchmark_gpu` | GPU-only benchmark，仅在手动 workflow 运行 | `tests/benchmarks/gpu/`，如 `bench_attention_forward.py`、`bench_transformer_backends.py`            |
+| `benchmark_cpu` | CPU-only benchmark，CPU-safe 子集自动在 CI 中运行 | `tests/benchmarks/cpu/`，如 `bench_attention_forward.py`、`bench_ffn_forward.py`                     |
+| `benchmark_gpu` | GPU-only benchmark，仅本地 CUDA CLI 执行 | `tests/benchmarks/gpu/`，如 `bench_attention_forward.py`、`bench_transformer_backends.py`            |
 
 新增测试文件时，把它放进对应阶段目录即可；如果测试模块仍留在 `tests/` 根目录，pytest 收集阶段会直接报错，避免出现未分类测试悄悄混入默认路由。
 
@@ -114,29 +118,24 @@ uv run pytest tests/unit/test_metrics.py tests/unit/test_property_based.py -q
 
 ## CI 流程
 
-快速 CI 在 `ubuntu-latest` + Python 3.13 上运行 CPU 纯逻辑测试、CPU benchmark，并只对 CPU-safe 子集执行 coverage 门槛。GPU 测试与 GPU benchmark 改为独立的手动 workflow，在需要时再投递到自托管 GPU runner。文档部署只等待快速 CI 完成。
+快速 CI 在 `ubuntu-latest` + Python 3.13 上运行 CPU 纯逻辑测试、CPU-safe benchmark 子集，并只对 CPU-safe 子集执行 coverage 门槛。GPU 测试与 GPU benchmark 仅保留本地 CUDA CLI 入口。文档部署只等待快速 CI 完成。
 
 快速 CI：
 
-1. `uv sync --locked` — 严格锁定环境
+1. `uv sync --locked --extra cpu` — 严格锁定 CPU profile 环境
 2. `uv run --with ruff ruff check .` — 通用代码风格检查
 3. `uv run pytest tests/unit/test_repo_policy.py -q` — 仓库策略规则检查
 4. `coverage run --data-file=.coverage.cpu -m pytest -m unit` — CPU 单元测试 + 覆盖率采集
-5. `uv run pytest tests/benchmarks/cpu -m benchmark_cpu --benchmark-json=benchmark-result-cpu.json -v` — 自动执行 CPU benchmark 并上传结果 artifact
+5. `ci.yml` 会按 CPU-safe benchmark 子集执行 `benchmark_cpu` 并上传结果 artifact
 6. `coverage report --fail-under=70 --include="src/taac2026/domain/*,src/taac2026/application/training/__init__.py,src/taac2026/application/training/cli.py,src/taac2026/application/training/runtime_optimization.py"` — CPU-safe 子集门槛校验（< 70 % 失败）
 7. `coverage xml --fail-under=0 --include="src/taac2026/domain/*,src/taac2026/application/training/__init__.py,src/taac2026/application/training/cli.py,src/taac2026/application/training/runtime_optimization.py" -o coverage.xml` — 导出 CPU-only coverage artifact
 
-手动 GPU 测试：
+本地 CUDA CLI 入口：
 
-1. `uv sync --locked` — 在自托管 GPU runner 上同步环境
+1. 本地 CLI 需要显式选择与你本机 CUDA 对应的 profile：`cuda126` / `cuda128` / `cuda130`
 2. `TAAC_GPU_ENV_REPORT_PATH=gpu-env-report.json uv run pytest tests/gpu/test_gpu_environment.py -q` — 记录 GPU compute capability、精度路由、TorchRec / fbgemm / Triton 以及可选 Transformer Engine 工具链证据
-3. `coverage run --data-file=.coverage.gpu -m pytest -m "integration or gpu"` — 执行 integration + gpu 标记测试
-4. 上传 `.coverage.gpu` artifact，供需要时与 `.coverage.cpu` 合并查看完整 coverage
+3. `uv run --with coverage coverage run --data-file=.coverage.gpu -m pytest -m "integration or gpu" -v` — 执行 integration + gpu 标记测试
+4. `uv run pytest tests/benchmarks/gpu -m benchmark_gpu --benchmark-json=benchmark-result.json -v` — 执行 GPU benchmark
+5. `uv run taac-bench-report --input benchmark-result.json` — 生成 benchmark 图表缓存供本地文档预览复用
 
-手动性能测试：
-
-1. `uv sync --locked` — 在自托管 GPU runner 上同步环境
-2. `uv run pytest tests/benchmarks/gpu -m benchmark_gpu --benchmark-json=benchmark-result.json -v` — 只执行 GPU benchmark 并产出 benchmark 原始结果
-3. `uv run taac-bench-report --input benchmark-result.json` — 生成 benchmark 图表缓存供文档站点复用
-
-如果只在本地复现实验，可直接运行 `uv run pytest tests/benchmarks/cpu -m benchmark_cpu -v`。如果是在本地 CUDA 机器上复现 GPU benchmark，则运行 `uv run pytest tests/benchmarks/gpu -m benchmark_gpu -v`。
+如果只在本地复现实验，可直接运行 `uv run pytest tests/benchmarks/cpu -m benchmark_cpu -v`；其中依赖 TorchRec / fbgemm 的条目在纯 CPU profile 下会 skip。如果是在本地 CUDA 机器上复现 GPU benchmark，则运行 `uv run pytest tests/benchmarks/gpu -m benchmark_gpu -v`。

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import os
 from pathlib import Path
 
 import pytest
@@ -101,7 +100,7 @@ def test_collect_inference_profile_accepts_sample_count(test_workspace: TestWork
 def test_build_training_external_profiler_plan_contains_uv_commands(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.setattr(
         "taac2026.application.training.external_profilers._resolve_profiler_executable",
-        lambda tool: f"C:/tools/{tool}.exe",
+        lambda tool: f"/opt/nvidia-tools/{tool}",
     )
     monkeypatch.setattr(
         "taac2026.application.training.external_profilers._read_profiler_version",
@@ -140,7 +139,7 @@ def test_build_training_external_profiler_plan_contains_uv_commands(monkeypatch:
 def test_build_training_external_profiler_plan_includes_runtime_flags(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.setattr(
         "taac2026.application.training.external_profilers._resolve_profiler_executable",
-        lambda tool: f"C:/tools/{tool}.exe",
+        lambda tool: f"/opt/nvidia-tools/{tool}",
     )
     monkeypatch.setattr(
         "taac2026.application.training.external_profilers._read_profiler_version",
@@ -163,7 +162,7 @@ def test_build_training_external_profiler_plan_includes_runtime_flags(monkeypatc
 def test_build_evaluation_external_profiler_plan_includes_runtime_flags(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.setattr(
         "taac2026.application.training.external_profilers._resolve_profiler_executable",
-        lambda tool: f"C:/tools/{tool}.exe",
+        lambda tool: f"/opt/nvidia-tools/{tool}",
     )
     monkeypatch.setattr(
         "taac2026.application.training.external_profilers._read_profiler_version",
@@ -232,9 +231,8 @@ def test_run_training_includes_unified_profiling_report(test_workspace: TestWork
     assert "ncu" in summary["profiling"]["external_profilers"]["tools"]
     assert "nsys" in summary["profiling"]["external_profilers"]["tools"]
     assert (Path(experiment.train.output_dir) / "profiling" / "external_profilers.json").exists()
-    script_extension = ".ps1" if os.name == "nt" else ".sh"
-    assert (Path(experiment.train.output_dir) / "profiling" / f"profile_ncu{script_extension}").exists()
-    assert (Path(experiment.train.output_dir) / "profiling" / f"profile_nsys{script_extension}").exists()
+    assert (Path(experiment.train.output_dir) / "profiling" / "profile_ncu.sh").exists()
+    assert (Path(experiment.train.output_dir) / "profiling" / "profile_nsys.sh").exists()
 
 
 def test_run_training_rejects_custom_profile_schema_without_compat_fallback(test_workspace: TestWorkspace) -> None:

@@ -18,7 +18,15 @@ def _estimate_state_dict_memory_mb(model: nn.Module) -> float:
     return float(total_bytes) / (1024.0 * 1024.0)
 
 
-def test_inference_latency_baseline(benchmark, benchmark_device, benchmark_workspace, cuda_timer, performance_recorder) -> None:
+def test_inference_latency_baseline(
+    benchmark,
+    benchmark_device,
+    benchmark_workspace,
+    require_torchrec_runtime,
+    cuda_timer,
+    performance_recorder,
+) -> None:
+    del require_torchrec_runtime
     model_config = ModelConfig(name="tiny_benchmark", **benchmark_workspace.model_kwargs)
     model = TinyExperimentModel(benchmark_workspace.data_config, model_config, benchmark_workspace.data_config.dense_feature_dim)
     model = model.to(benchmark_device)
@@ -59,7 +67,14 @@ def test_inference_latency_baseline(benchmark, benchmark_device, benchmark_works
     performance_recorder("inference_latency", stats)
 
 
-def test_inference_latency_int8_quantized_baseline(benchmark, benchmark_workspace, cuda_timer, performance_recorder) -> None:
+def test_inference_latency_int8_quantized_baseline(
+    benchmark,
+    benchmark_workspace,
+    require_torchrec_runtime,
+    cuda_timer,
+    performance_recorder,
+) -> None:
+    del require_torchrec_runtime
     model_config = ModelConfig(name="tiny_int8_benchmark", **benchmark_workspace.model_kwargs)
     model = TinyExperimentModel(
         benchmark_workspace.data_config,

@@ -12,7 +12,7 @@
     <img src="https://img.shields.io/badge/Docs-Online-0A7B83.svg" alt="Online Docs">
   </a>
   <img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License">
-  <img src="https://img.shields.io/badge/Python-3.12%2B-blue.svg" alt="Python">
+  <img src="https://img.shields.io/badge/Python-3.10%2B-blue.svg" alt="Python">
   <img src="https://img.shields.io/badge/PyTorch-2.6%2B-EE4C2C.svg" alt="PyTorch">
   <img src="https://img.shields.io/badge/Task-Recommendation-brightgreen.svg" alt="Task">
   <img src="https://img.shields.io/badge/Track-TAAC%202026-orange.svg" alt="Track">
@@ -41,6 +41,8 @@
 > 1. 提供开箱可用的训练与评估框架。
 > 2. 支持大算力场景下的超参数搜索和实验管理。
 > 3. 持续同步最新论文、公开方案和可复核实验包。
+>
+> 当前仓库仅支持 Linux 运行时；Windows 与 WSL 不在支持范围内。
 
 这是一个完全面向 TAAC 2026 大赛的实验工作区。设计目标是共享训练底座、目录式实验包、统一输出产物和回归测试放进同一套工程里，让新实验可以更快接入、训练、评估和复核。
 
@@ -66,7 +68,13 @@
 
 ```bash
 uv python install 3.13
-uv sync --locked
+
+# CPU-only profile: unit tests, docs, CPU benchmarks
+uv sync --locked --extra cpu
+
+# GPU profile: training, local integration / GPU tests / GPU benchmarks
+# 手动选择与你本机 CUDA 对应的 profile：cuda126 / cuda128 / cuda130
+uv sync --locked --extra cuda128
 
 # 训练 starter baseline
 uv run taac-train --experiment config/baseline

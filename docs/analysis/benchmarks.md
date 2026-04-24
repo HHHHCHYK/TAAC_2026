@@ -9,13 +9,13 @@ icon: lucide/gauge
 - `pytest-benchmark` 导出的运行结果
 - `outputs/performance/` 下的补充 JSON 统计
 
-如果当前工作区尚未执行 benchmark，本页会显示占位图；按当前环境选择 CPU 或 GPU benchmark 入口后，再运行报告命令即可刷新：
+如果当前工作区尚未执行 benchmark，本页会显示占位图；按当前环境选择 CPU 或 GPU benchmark 的 CLI 入口后，再运行报告命令即可刷新：
 
 ```bash
 # CPU benchmark slice
 uv run pytest tests/benchmarks/cpu -m benchmark_cpu --benchmark-json=benchmark-result-cpu.json -v
 
-# GPU benchmark slice
+# GPU benchmark slice (CLI only)
 uv run pytest tests/benchmarks/gpu -m benchmark_gpu --benchmark-json=benchmark-result.json -v
 
 # 为已生成的 benchmark JSON 刷新图表与验收摘要

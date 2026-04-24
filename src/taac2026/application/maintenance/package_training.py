@@ -21,6 +21,7 @@ DEFAULT_OUTPUT_ROOT = REPO_ROOT / "outputs" / "training_bundles"
 DEFAULT_DATASET_ENV_VAR = "TAAC_DATASET_PATH"
 DEFAULT_OUTPUT_ENV_VAR = "TAAC_OUTPUT_DIR"
 DEFAULT_WORKDIR_ENV_VAR = "TAAC_BUNDLE_WORKDIR"
+DEFAULT_CUDA_PROFILE_ENV_VAR = "TAAC_CUDA_PROFILE"
 DEFAULT_ENABLE_TE_ENV_VAR = "TAAC_ENABLE_TE"
 DEFAULT_FORCE_EXTRACT_ENV_VAR = "TAAC_FORCE_EXTRACT"
 PAYLOAD_ARCHIVE_NAME = "runtime_payload.tar.gz"
@@ -135,6 +136,7 @@ def _render_run_sh(bundled_experiment_path: str) -> str:
             "workdir_expr": f"${{{DEFAULT_WORKDIR_ENV_VAR}:-$SCRIPT_DIR/runtime}}",
             "dataset_path_expr": f"${{{DEFAULT_DATASET_ENV_VAR}:-}}",
             "output_dir_expr": f"${{{DEFAULT_OUTPUT_ENV_VAR}:-$SCRIPT_DIR/outputs}}",
+            "cuda_profile_expr": f"${{{DEFAULT_CUDA_PROFILE_ENV_VAR}:-cuda128}}",
             "enable_te_expr": f"${{{DEFAULT_ENABLE_TE_ENV_VAR}:-0}}",
             "force_extract_expr": f"${{{DEFAULT_FORCE_EXTRACT_ENV_VAR}:-0}}",
             "bundled_experiment_path": bundled_experiment_path,
@@ -151,6 +153,7 @@ def _render_readme(bundle_name: str, bundled_experiment_path: str) -> str:
             "dataset_env_var": DEFAULT_DATASET_ENV_VAR,
             "output_env_var": DEFAULT_OUTPUT_ENV_VAR,
             "workdir_env_var": DEFAULT_WORKDIR_ENV_VAR,
+            "cuda_profile_env_var": DEFAULT_CUDA_PROFILE_ENV_VAR,
             "enable_te_env_var": DEFAULT_ENABLE_TE_ENV_VAR,
             "force_extract_env_var": DEFAULT_FORCE_EXTRACT_ENV_VAR,
             "dataset_env_reference": f"${{{DEFAULT_DATASET_ENV_VAR}}}",
@@ -264,6 +267,7 @@ def build_training_bundle(
                 "dataset_path": DEFAULT_DATASET_ENV_VAR,
                 "output_dir": DEFAULT_OUTPUT_ENV_VAR,
                 "workdir": DEFAULT_WORKDIR_ENV_VAR,
+                "cuda_profile": DEFAULT_CUDA_PROFILE_ENV_VAR,
                 "enable_te": DEFAULT_ENABLE_TE_ENV_VAR,
                 "force_extract": DEFAULT_FORCE_EXTRACT_ENV_VAR,
             },

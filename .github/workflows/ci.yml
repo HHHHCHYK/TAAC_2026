@@ -24,14 +24,21 @@ on:
 permissions:
   contents: read
 
+env:
+  CI_CANONICAL_PYTHON_VERSION: "3.13"
+
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
   style:
-    name: Style & Policy
+    name: Style & Policy (Python ${{ matrix.python-version }})
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.11", "3.12", "3.13"]
 
     steps:
       - name: Checkout repository
@@ -40,7 +47,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v6
         with:
-          python-version: "3.13"
+          python-version: ${{ matrix.python-version }}
 
       - name: Set up uv
         uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
@@ -51,8 +58,12 @@ jobs:
         run: uv run --with ruff ruff check .
 
   test:
-    name: CPU Unit Tests
+    name: CPU Unit Tests (Python ${{ matrix.python-version }})
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.11", "3.12", "3.13"]
 
     steps:
       - name: Checkout repository
@@ -61,7 +72,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v6
         with:
-          python-version: "3.13"
+          python-version: ${{ matrix.python-version }}
 
       - name: Set up uv
         uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
@@ -69,7 +80,7 @@ jobs:
           enable-cache: true
 
       - name: Sync project environment
-        run: uv sync --locked
+        run: uv sync --locked --extra cpu
 
       - name: Run repository policy checks
         run: uv run pytest tests/unit/test_repo_policy.py -q
@@ -84,28 +95,33 @@ jobs:
           from tests import conftest
 
           counts = conftest.count_classified_test_files()
+          cpu_safe_count = len(conftest.cpu_ci_safe_benchmark_files())
           with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as handle:
               handle.write("## CPU test routing\n\n")
-              handle.write(f"- executed on ubuntu-latest: unit ({counts['unit']} files)\\n")
-              handle.write(f"- executed in the automatic CPU benchmark job: benchmark_cpu ({counts['benchmark_cpu']} files)\\n")
+              handle.write(f"- executed on ubuntu-latest with Python ${{ matrix.python-version }}: unit ({counts['unit']} files)\\n")
+              handle.write(f"- executed in the automatic CPU benchmark job: benchmark_cpu CPU-safe subset ({cpu_safe_count} files)\\n")
               handle.write(
-                f"- delegated to manual GPU workflows: integration ({counts['integration']} files), gpu ({counts['gpu']} files), benchmark_gpu ({counts['benchmark_gpu']} files)\\n"
+                f"- delegated to local CUDA validation paths: integration ({counts['integration']} files), gpu ({counts['gpu']} files), benchmark_gpu ({counts['benchmark_gpu']} files)\\n"
               )
-              handle.write("- reason: the repository pins CUDA-linked TorchRec/fbgemm wheels, so stack-level imports require libcuda.so.1 even for CPU assertions.\\n")
+              handle.write("- reason: CUDA-linked validation stays off the fast CPU CI path so ubuntu-latest does not depend on libcuda.so.1.\\n")
           PY
 
       - name: Upload CPU coverage data
-        if: always()
+        if: always() && matrix.python-version == env.CI_CANONICAL_PYTHON_VERSION
         uses: actions/upload-artifact@v7
         with:
-          name: coverage-cpu-data
+          name: coverage-cpu-data-py${{ env.CI_CANONICAL_PYTHON_VERSION }}
           path: .coverage.cpu
           include-hidden-files: true
           if-no-files-found: error
 
   cpu-benchmarks:
-    name: CPU Benchmarks
+    name: CPU Benchmarks (Python ${{ matrix.python-version }})
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.11", "3.12", "3.13"]
 
     steps:
       - name: Checkout repository
@@ -114,7 +130,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v6
         with:
-          python-version: "3.13"
+          python-version: ${{ matrix.python-version }}
 
       - name: Set up uv
         uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
@@ -122,12 +138,23 @@ jobs:
           enable-cache: true
 
       - name: Sync project environment
-        run: uv sync --locked
+        run: uv sync --locked --extra cpu
 
       - name: Run CPU benchmark suite
         run: |
           rm -rf .benchmarks outputs/performance benchmark-result-cpu.json
-          uv run pytest tests/benchmarks/cpu -m benchmark_cpu --benchmark-json=benchmark-result-cpu.json -v
+          mapfile -t cpu_safe_benchmarks < <(uv run python - <<'PY'
+          from tests import conftest
+
+          for path in conftest.cpu_ci_safe_benchmark_files():
+              print(path)
+          PY
+          )
+          if [[ "${#cpu_safe_benchmarks[@]}" -eq 0 ]]; then
+            echo "No CPU-safe benchmark files found for automatic CI." >&2
+            exit 1
+          fi
+          uv run pytest "${cpu_safe_benchmarks[@]}" -m benchmark_cpu --benchmark-json=benchmark-result-cpu.json -v
 
       - name: Summarize CPU benchmark evidence
         run: |
@@ -138,10 +165,14 @@ jobs:
           from tests import conftest
 
           counts = conftest.count_classified_test_files()
+          cpu_safe_count = len(conftest.cpu_ci_safe_benchmark_files())
+          cuda_runtime_count = counts["benchmark_cpu"] - cpu_safe_count
           payloads = sorted(path.name for path in Path("outputs/performance").glob("*.json"))
           with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as handle:
               handle.write("## CPU benchmark evidence\n\n")
-              handle.write(f"- executed marker: benchmark_cpu ({counts['benchmark_cpu']} files) on ubuntu-latest\\n")
+              handle.write(f"- executed CPU-safe benchmark_cpu subset: {cpu_safe_count} files on ubuntu-latest with Python ${{ matrix.python-version }}\\n")
+              if cuda_runtime_count:
+                handle.write(f"- remaining benchmark_cpu files that still require CUDA-linked TorchRec runtime: {cuda_runtime_count}\\n")
               handle.write(f"- generated payloads: {', '.join(payloads) if payloads else 'none'}\\n")
               handle.write("- artifacts: benchmark-result-cpu.json, outputs/performance/\\n")
           PY
@@ -150,7 +181,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: cpu-benchmark-results
+          name: cpu-benchmark-results-py${{ matrix.python-version }}
           path: |
             benchmark-result-cpu.json
             outputs/performance
@@ -171,7 +202,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v6
         with:
-          python-version: "3.13"
+          python-version: ${{ env.CI_CANONICAL_PYTHON_VERSION }}
 
       - name: Set up uv
         uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
@@ -181,7 +212,7 @@ jobs:
       - name: Download CPU coverage data
         uses: actions/download-artifact@v8
         with:
-          name: coverage-cpu-data
+          name: coverage-cpu-data-py${{ env.CI_CANONICAL_PYTHON_VERSION }}
           path: .coverage-artifacts/cpu
 
       - name: Restore coverage data
@@ -193,11 +224,12 @@ jobs:
           {
             echo "## Coverage scope"
             echo
-            echo "- enforced from the fast CPU CI workflow using unit-routed, CPU-safe modules only"
+            echo "- compatibility checks run on Python 3.10, 3.11, 3.12, and 3.13"
+            echo "- coverage gate is enforced from the canonical Python ${CI_CANONICAL_PYTHON_VERSION} unit lane using CPU-safe modules only"
             echo "- CPU benchmarks run automatically in ci.yml but do not affect the coverage gate"
             echo "- includes: src/taac2026/domain/*, src/taac2026/application/training/__init__.py, src/taac2026/application/training/cli.py, src/taac2026/application/training/runtime_optimization.py"
-            echo "- integration and gpu coverage still lives in .github/workflows/gpu-tests.yml"
-            echo "- GPU-only benchmarks live in .github/workflows/performance-benchmarks.yml"
+            echo "- integration and gpu coverage is collected from local CUDA CLI runs when needed"
+            echo "- GPU-only benchmarks live under tests/benchmarks/gpu and run via local CUDA CLI"
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Enforce CPU coverage gate

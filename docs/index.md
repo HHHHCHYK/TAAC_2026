@@ -56,7 +56,11 @@ icon: lucide/house
 ```bash
 # 安装环境
 uv python install 3.13
-uv sync --locked
+uv sync --locked --extra cpu
+
+# 需要 GPU 时，手动选择与你本机 CUDA 对应的 profile
+# 如需切换，再改成 cuda126 / cuda128 / cuda130
+uv sync --locked --extra cuda128
 
 # 训练 baseline
 uv run taac-train --experiment config/baseline

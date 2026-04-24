@@ -18,6 +18,19 @@ BENCHMARK_PHASE_DIRECTORIES: dict[str, tuple[str, str]] = {
 }
 
 
+def cpu_ci_safe_benchmark_files() -> tuple[str, ...]:
+    benchmark_root = TESTS_ROOT / "benchmarks" / "cpu"
+    safe_files: list[str] = []
+
+    for candidate in sorted(benchmark_root.glob("bench_*.py")):
+        candidate_text = candidate.read_text(encoding="utf-8")
+        if "require_torchrec_runtime" in candidate_text:
+            continue
+        safe_files.append(_render_test_path(candidate))
+
+    return tuple(safe_files)
+
+
 def _relative_test_parts(collection_path: Path) -> tuple[str, ...] | None:
     parts = collection_path.parts
     for index in range(len(parts) - 1, -1, -1):
